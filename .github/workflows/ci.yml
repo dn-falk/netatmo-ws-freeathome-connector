@@ -1,0 +1,101 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: [18, 22]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - run: npm run validate
+
+  package:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: npm
+      - run: npm ci
+      - run: npm run pack
+      - uses: actions/upload-artifact@v4
+        with:
+          name: free-at-home-addon
+          path: "*.tar"
+          if-no-files-found: error
+
+  # Publishes the release v<version> with the addon archive as soon as main contains a version
+  # (free-at-home-metadata.json) that has not been released yet.
+  release:
+    if: github.ref == 'refs/heads/main'
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: release
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check version
+        id: version
+        run: |
+          version=$(jq -r .version free-at-home-metadata.json)
+          package_version=$(jq -r .version package.json)
+          if [ "$version" != "$package_version" ]; then
+            echo "::error::Version in free-at-home-metadata.json ($version) and package.json ($package_version) differ"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          status=0
+          git ls-remote --exit-code --tags origin "refs/tags/v$version" > /dev/null || status=$?
+          case $status in
+            0)
+              echo "::notice::Version $version is released already. Increase the version to publish a new release."
+              echo "new=false" >> "$GITHUB_OUTPUT"
+              ;;
+            2)
+              echo "new=true" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "::error::Could not read the tags of the repository"
+              exit 1
+              ;;
+          esac
+      - if: steps.version.outputs.new == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: free-at-home-addon
+      - if: steps.version.outputs.new == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          target_commitish: ${{ github.sha }}
+          name: Netatmo-Weather-Connector ${{ steps.version.outputs.version }}
+          files: "*.tar"
+          fail_on_unmatched_files: true
+          generate_release_notes: true
+          body: |
+            Download the `.tar` file below and upload it in the free@home next app under
+            More → Installation settings → Addons → Upload. Setup: see the [README](https://github.com/${{ github.repository }}#readme).
+
+            Die `.tar`-Datei unten herunterladen und in der free@home-next-App unter
+            Mehr → Installationseinstellungen → Addons → Hochladen installieren. Einrichtung: siehe [README](https://github.com/${{ github.repository }}/blob/main/README.de.md).

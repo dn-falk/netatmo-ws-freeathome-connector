@@ -1,0 +1,8 @@
+node_modules/
+build/
+.test-build/
+*.tar
+*.tar.gz
+*.tar.bz2
+.env
+.vscode/launch.json

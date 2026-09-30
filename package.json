@@ -1,0 +1,37 @@
+{
+  "name": "netatmo-ws-freeathome-connector",
+  "version": "1.0.0",
+  "description": "free@home addon: Netatmo Smart Home Weather Station and its indoor modules as free@home weather station and sensors",
+  "private": true,
+  "main": "build/main.js",
+  "scripts": {
+    "start": "node build/main.js",
+    "build": "tsc -p tsconfig.json",
+    "buildProd": "tsc -p tsconfig.json --sourceMap false",
+    "validate": "free-at-home-cli validate",
+    "test": "tsc -p tsconfig.test.json && node --test --test-reporter=spec .test-build/test/*.test.js",
+    "typecheck": "tsc -p tsconfig.test.json --noEmit",
+    "pack": "npm run clean && npm run buildProd && npm run validate && free-at-home-cli buildscriptarchive build && node -e \"const m=require('./free-at-home-metadata.json');require('fs').renameSync(m.id+'-'+m.version+'.tar','netatmo-weather-connector-'+m.version+'.tar')\"",
+    "clean": "node -e \"require('fs').rmSync('build',{recursive:true,force:true})\"",
+    "mock": "tsc -p tsconfig.test.json && node .test-build/tools/mock-netatmo.js",
+    "journal": "free-at-home-cli journal --filterAddon",
+    "monitorconfig": "free-at-home-cli addonconfiguration --clear",
+    "monitorstate": "free-at-home-cli addonapplicationstate --clear"
+  },
+  "author": "Dennis Nikolas Falk",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@busch-jaeger/free-at-home": "0.37.0"
+  },
+  "devDependencies": {
+    "@busch-jaeger/free-at-home-cli": "0.13.1",
+    "@tsconfig/node18": "18.2.7",
+    "@types/node": "18.19.130",
+    "@types/ws": "8.18.1",
+    "typescript": "5.9.3",
+    "ws": "8.21.3"
+  }
+}
