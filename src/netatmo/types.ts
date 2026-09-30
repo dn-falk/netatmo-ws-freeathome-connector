@@ -23,8 +23,13 @@ export interface DashboardData {
     Humidity?: number;
     CO2?: number;
     Noise?: number;
-    /** Pressure at sea level (mbar). */
+    /**
+     * Pressure reduced to sea level (mbar), as shown in the Netatmo app. The current API
+     * specification swaps the descriptions of Pressure and AbsolutePressure, but real responses
+     * are unambiguous: a station at 664 m reports Pressure 1017.3 and AbsolutePressure 939.7.
+     */
     Pressure?: number;
+    /** Pressure at the altitude of the station (mbar). */
     AbsolutePressure?: number;
     WindStrength?: number;
     WindAngle?: number;
@@ -73,6 +78,9 @@ export interface PublicMeasure {
     wind_strength?: number;
     wind_angle?: number;
     gust_strength?: number;
+    /** Spelling of the API specification ("wind_strengh", "gust_strenght"); the API sends the above. */
+    wind_strengh?: number;
+    gust_strenght?: number;
     gust_angle?: number;
     wind_timeutc?: number;
 }

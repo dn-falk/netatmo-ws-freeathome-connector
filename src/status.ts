@@ -4,7 +4,7 @@ import { Message } from "./config";
 import { errorMessage } from "./log";
 import { NetatmoError } from "./netatmo/errors";
 
-export type OfflineReason = "auth" | "scope" | "rateLimit" | "other";
+export type OfflineReason = "auth" | "scope" | "rateLimit" | "appDeactivated" | "other";
 
 export type AddonStatus =
     | { state: "starting" }
@@ -19,7 +19,7 @@ export function fromBridgeStatus(status: BridgeStatus): AddonStatus {
             return { state: "online", stations: status.stations, devices: status.devices, sources: status.sources };
         case "offline": {
             const kind = status.error instanceof NetatmoError ? status.error.kind : undefined;
-            const reason: OfflineReason = kind === "auth" || kind === "scope" || kind === "rateLimit" ? kind : "other";
+            const reason: OfflineReason = kind === "auth" || kind === "scope" || kind === "rateLimit" || kind === "appDeactivated" ? kind : "other";
             return { state: "offline", error: status.error ? errorMessage(status.error) : "unknown error", reason, sources: status.sources };
         }
         default:
@@ -58,6 +58,11 @@ export function describeStatus(status: AddonStatus): Message {
                     return {
                         en: "The token lacks the scope read_station, please generate a new one with this scope",
                         de: "Dem Token fehlt der Scope read_station, bitte einen neuen mit diesem Scope erzeugen",
+                    };
+                case "appDeactivated":
+                    return {
+                        en: "The Netatmo app was deactivated, please activate it again on dev.netatmo.com (My apps)",
+                        de: "Die Netatmo-App wurde deaktiviert, bitte auf dev.netatmo.com (My apps) wieder aktivieren",
                     };
                 case "rateLimit":
                     return {

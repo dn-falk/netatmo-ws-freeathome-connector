@@ -76,9 +76,9 @@ function parsePublicStation(raw: RawPublicStation, center: Location): PublicStat
         if (rainTime !== undefined && rainLive !== undefined)
             station.rain = { live: rainLive, hour: finite(measure.rain_60min), time: rainTime * 1000 };
         const windTime = finite(measure.wind_timeutc);
-        const windStrength = finite(measure.wind_strength);
+        const windStrength = finite(measure.wind_strength) ?? finite(measure.wind_strengh);
         if (windTime !== undefined && windStrength !== undefined)
-            station.wind = { strength: windStrength, gust: finite(measure.gust_strength) ?? windStrength, time: windTime * 1000 };
+            station.wind = { strength: windStrength, gust: finite(measure.gust_strength) ?? finite(measure.gust_strenght) ?? windStrength, time: windTime * 1000 };
     }
     return station;
 }

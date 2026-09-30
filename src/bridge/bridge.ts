@@ -249,7 +249,7 @@ export class Bridge extends EventEmitter {
         const err = error instanceof Error ? error : new Error(String(error));
         this.failures++;
         const kind = err instanceof NetatmoError ? err.kind : undefined;
-        const permanent = kind === "auth" || kind === "scope";
+        const permanent = kind === "auth" || kind === "scope" || kind === "appDeactivated";
         if (permanent || kind === "rateLimit" || this.failures >= 2) {
             if (this.state !== "offline" || this.error?.message !== err.message)
                 this.log.warn(`Netatmo not available: ${errorMessage(err)}`);
@@ -261,7 +261,7 @@ export class Bridge extends EventEmitter {
         if (permanent)
             return AUTH_RETRY_DELAY_MS;
         if (kind === "rateLimit")
-            return RATE_LIMIT_DELAY_MS;
+            return Math.max(RATE_LIMIT_DELAY_MS, (err as NetatmoError).retryAfterMs ?? 0);
         const delays = this.deps.retryDelaysMs ?? RETRY_DELAYS_MS;
         return delays[Math.min(this.failures - 1, delays.length - 1)];
     }
@@ -344,7 +344,7 @@ export class Bridge extends EventEmitter {
                         + (nearby.length ? `, nearest ${nearby.slice(0, 5).map((entry) => `${entry.distanceKm.toFixed(1)} km`).join(", ")}` : ""));
                 } catch (error) {
                     this.log.warn(`could not read the public weather map (${kind}): ${errorMessage(error)}`);
-                    if (error instanceof NetatmoError && (error.kind === "rateLimit" || error.kind === "auth"))
+                    if (error instanceof NetatmoError && (error.kind === "rateLimit" || error.kind === "auth" || error.kind === "appDeactivated"))
                         return;
                 }
             }

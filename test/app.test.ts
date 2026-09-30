@@ -182,6 +182,7 @@ describe("status", () => {
         assert.match(describeStatus({ state: "offline", error: "timeout", reason: "other", sources: [] }).de, /Netatmo nicht erreichbar/);
         assert.match(describeStatus({ state: "offline", error: "x", reason: "scope", sources: [] }).de, /read_station/);
         assert.match(describeStatus({ state: "offline", error: "x", reason: "rateLimit", sources: [] }).en, /Too many requests/);
+        assert.match(describeStatus({ state: "offline", error: "x", reason: "appDeactivated", sources: [] }).de, /Netatmo-App wurde deaktiviert/);
         assert.match(describeStatus({ state: "configurationNeeded", problems: [{ en: "client ID is missing", de: "Client ID fehlt" }] }).de,
             /Konfiguration nötig: Client ID fehlt/);
         assert.equal(describeSources(online).de,

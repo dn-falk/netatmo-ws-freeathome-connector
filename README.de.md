@@ -189,7 +189,8 @@ free@home löschen und die Aktoren mit den Geräten des Addons verknüpfen.
 | „Konfiguration nötig: …“ | Client ID, Client Secret oder Refresh Token fehlt, oder ungültige Koordinaten. |
 | „Netatmo lehnt den Token ab …“ | Der Token wurde widerrufen (z. B. anderswo neuer Token erzeugt, App gelöscht) oder Client ID/Secret stimmen nicht. Im Token generator einen neuen Refresh Token erzeugen und eintragen. |
 | „Dem Token fehlt der Scope read_station …“ | Den Token neu erzeugen und dabei `read_station` anhaken. |
-| „Zu viele Anfragen an Netatmo …“ | Netatmo erlaubt 500 Anfragen pro Stunde je App und Benutzer. Das Addon braucht etwa 20–30 pro Stunde; für das Addon eine eigene Netatmo-App verwenden. Das Addon wartet 15 Minuten und versucht es erneut. |
+| „Zu viele Anfragen an Netatmo …“ | Netatmo erlaubt 500 Anfragen pro Stunde je App und Benutzer. Das Addon braucht etwa 20–30 pro Stunde; für das Addon eine eigene Netatmo-App verwenden. Das Addon wartet 15 Minuten (länger, wenn Netatmo das verlangt) und versucht es erneut. |
+| „Die Netatmo-App wurde deaktiviert …“ | Netatmo hat die eigene App auf dev.netatmo.com deaktiviert. Unter **My apps** wieder aktivieren; das Addon versucht es alle 30 Minuten erneut, sofort mit **Stationen neu einlesen**. |
 | „Netatmo nicht erreichbar“ | Keine Internetverbindung des SysAP oder Störung bei Netatmo. Das Addon versucht es weiter; Sensoren, deren Werte älter als 30 Minuten sind, werden als „nicht erreichbar“ angezeigt. |
 | Aktuelle Datenquellen „Regen keine Daten“ | Kein eigener Regenmesser und kein öffentlicher Regenmesser im Umkreis: Umkreis vergrößern. |
 | Helligkeit „berechnet (Wetterdienst nicht erreichbar)“ | Open-Meteo/Bright Sky nicht erreichbar oder (Bright Sky) keine DWD-Station mit Strahlungsmessung in der Nähe: Open-Meteo wählen. |

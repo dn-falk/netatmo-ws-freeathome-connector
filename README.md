@@ -181,7 +181,8 @@ and link the actuators with the devices of the addon.
 | "Configuration needed: …" | Client ID, client secret or refresh token missing, or invalid coordinates. |
 | "Netatmo rejects the token …" | The token was revoked (e.g. new token generated elsewhere, app deleted) or client ID/secret are wrong. Generate a new refresh token in the Token generator and enter it. |
 | "The token lacks the scope read_station …" | Generate the token again with the scope `read_station` ticked. |
-| "Too many requests to Netatmo …" | Netatmo allows 500 requests per hour per app and user. The addon needs about 20–30 per hour; use a separate Netatmo app for the addon. The addon waits 15 minutes and tries again. |
+| "Too many requests to Netatmo …" | Netatmo allows 500 requests per hour per app and user. The addon needs about 20–30 per hour; use a separate Netatmo app for the addon. The addon waits 15 minutes (longer if Netatmo asks for it) and tries again. |
+| "The Netatmo app was deactivated …" | Netatmo deactivated your app on dev.netatmo.com. Activate it again under **My apps**; the addon tries again every 30 minutes, or at once with **Reload stations**. |
 | "Netatmo not reachable" | No internet connection of the SysAP or Netatmo disturbance. The addon keeps trying; sensors whose values are older than 30 minutes are shown as "not reachable". |
 | Current data sources "Rain no data" | No rain gauge of your own and no public rain gauge within the radius: increase the radius. |
 | Brightness "calculated (weather service not available)" | Open-Meteo/Bright Sky not reachable, or (Bright Sky) no DWD station with radiation measurement nearby: choose Open-Meteo. |

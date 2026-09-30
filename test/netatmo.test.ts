@@ -3,7 +3,7 @@ import { after, before, describe, it } from "node:test";
 
 import { Logger } from "../src/log";
 import { NetatmoClient } from "../src/netatmo/client";
-import { NetatmoError, apiError, tokenError } from "../src/netatmo/errors";
+import { NetatmoError, apiError, parseRetryAfter, tokenError } from "../src/netatmo/errors";
 import {
     boundingBox,
     distanceKm,
@@ -95,12 +95,16 @@ describe("public weather map", () => {
                 },
             },
             { _id: "own", place: { location: [8.6821, 50.1109] }, measures: {} },
-            { _id: "spec", place: { location: [8.683, 50.111] }, measures: { r: { rain_live: 0, rain_utc: time } } },
+            { _id: "spec", place: { location: [8.683, 50.111] }, measures: {
+                r: { rain_live: 0, rain_utc: time },
+                w: { wind_strengh: 8, gust_strenght: 20, wind_timeutc: time },
+            } },
             { _id: "second", place: { location: [8.70, 50.12] }, measures: { p: { res: { [time]: [1012] }, type: ["pressure"] } } },
             { place: { location: [8.70, 50.12] } },
         ], FRANKFURT, 5, new Set(["own"]));
         assert.deepEqual(stations.map((station) => station.id), ["spec", "near", "second"]);
-        assert.deepEqual(stations[0].rain, { live: 0, hour: undefined, time: time * 1000 }, "field name of the specification");
+        assert.deepEqual(stations[0].rain, { live: 0, hour: undefined, time: time * 1000 }, "field names of the specification");
+        assert.deepEqual(stations[0].wind, { strength: 8, gust: 20, time: time * 1000 });
         stations.shift();
         assert.deepEqual(stations[0].temperature, { value: 12, time: time * 1000 });
         assert.deepEqual(stations[0].rain, { live: 0.2, hour: 1.1, time: time * 1000 });
@@ -152,6 +156,14 @@ describe("public weather map", () => {
 });
 
 describe("Netatmo errors", () => {
+    it("reads Retry-After in seconds and as date", () => {
+        assert.equal(parseRetryAfter("60"), 60_000);
+        assert.equal(parseRetryAfter("Wed, 30 Sep 2026 12:00:30 GMT", Date.parse("2026-09-30T12:00:00Z")), 30_000);
+        assert.equal(parseRetryAfter(undefined), undefined);
+        assert.equal(parseRetryAfter("soon"), undefined);
+        assert.equal(parseRetryAfter("-5"), undefined);
+    });
+
     it("classifies errors of the token endpoint", () => {
         assert.equal(tokenError(400, { error: "invalid_grant" }).kind, "auth");
         assert.equal(tokenError(400, { error: "invalid_client" }).kind, "auth");
@@ -167,6 +179,14 @@ describe("Netatmo errors", () => {
         assert.equal(apiError(500, { error: { code: 0, message: "Internal" } }, "/api/x").kind, "network");
         assert.equal(apiError(400, { error: "strange" }, "/api/x").kind, "api");
         assert.match(apiError(403, { error: { code: 3, message: "Access token expired" } }, "/api/x").message, /\/api\/x: HTTP 403 code 3 Access token expired/);
+        // Codes of the "Error messages" list on dev.netatmo.com
+        assert.equal(apiError(429, { error: { code: 28, message: "Rate limit exceeded" } }, "/api/x").kind, "rateLimit");
+        assert.equal(apiError(403, { error: { code: 29, message: "Access temporarily restricted" } }, "/api/x").kind, "rateLimit");
+        assert.equal(apiError(403, { error: { code: 30, message: "Invalid refresh token" } }, "/api/x").kind, "auth");
+        assert.equal(apiError(403, { error: { code: -1, message: "Grant is invalid" } }, "/api/x").kind, "auth");
+        assert.equal(apiError(406, { error: { code: 5, message: "Application deactivated" } }, "/api/x").kind, "appDeactivated");
+        assert.equal(apiError(429, { error: { code: 26 } }, "/api/x", "120").retryAfterMs, 120_000);
+        assert.equal(tokenError(429, {}, "30").retryAfterMs, 30_000);
     });
 });
 

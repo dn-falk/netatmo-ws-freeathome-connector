@@ -36,7 +36,7 @@ export class NetatmoClient implements NetatmoApi {
         });
         const body = parseJson(response.text);
         if (response.status < 200 || response.status >= 300)
-            throw tokenError(response.status, body);
+            throw tokenError(response.status, body, response.retryAfter);
         const token = body as TokenResponse | undefined;
         if (!token || typeof token.access_token !== "string" || !token.access_token)
             throw new NetatmoError("token response without access token", "api", response.status);
@@ -64,7 +64,7 @@ export class NetatmoClient implements NetatmoApi {
         const response = await this.send("GET", path, query, undefined, { Authorization: `Bearer ${accessToken}` });
         const body = parseJson(response.text);
         if (response.status < 200 || response.status >= 300)
-            throw apiError(response.status, body, path);
+            throw apiError(response.status, body, path, response.retryAfter);
         if (!body || typeof body !== "object")
             throw new NetatmoError(`${path}: invalid response`, "api", response.status);
         return (body as { body?: T }).body;

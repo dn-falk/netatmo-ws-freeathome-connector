@@ -17,6 +17,8 @@ export class HttpError extends Error {
 export interface HttpResponse {
     status: number;
     text: string;
+    /** Value of the Retry-After header, if any. */
+    retryAfter?: string;
 }
 
 export interface HttpRequest {
@@ -62,7 +64,11 @@ export function httpRequest(request: HttpRequest): Promise<HttpResponse> {
                 chunks.push(chunk);
             });
             res.on("error", (error) => reject(new HttpError(`${description}: ${error.message}`, "network")));
-            res.on("end", () => resolve({ status: res.statusCode ?? 0, text: Buffer.concat(chunks).toString("utf8") }));
+            res.on("end", () => resolve({
+                status: res.statusCode ?? 0,
+                text: Buffer.concat(chunks).toString("utf8"),
+                retryAfter: typeof res.headers["retry-after"] === "string" ? res.headers["retry-after"] : undefined,
+            }));
         });
         req.setTimeout(request.timeoutMs, () => {
             req.destroy(new HttpError(`${description}: no response within ${request.timeoutMs} ms`, "timeout"));
