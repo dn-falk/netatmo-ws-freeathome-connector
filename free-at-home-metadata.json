@@ -8,7 +8,7 @@
     "en": "Shows a Netatmo Smart Home Weather Station in free@home: the outdoor values as a free@home weather station (temperature, wind, rain, brightness) and the indoor modules as sensors for temperature, humidity, CO2 and air pressure. Values the station cannot measure are taken from nearby stations of the public Netatmo weather map and from a weather service. Unofficial community addon, not affiliated with or endorsed by Netatmo/Legrand or ABB/Busch-Jaeger. Instructions, source code and support: https://github.com/dn-falk/netatmo-ws-freeathome-connector",
     "de": "Zeigt eine Netatmo Smarte Wetterstation in free@home an: die Außenwerte als free@home-Wetterstation (Temperatur, Wind, Regen, Helligkeit) und die Innenmodule als Sensoren für Temperatur, Luftfeuchte, CO2 und Luftdruck. Werte, die die Station nicht misst, kommen von Stationen der öffentlichen Netatmo-Wetterkarte in der Nähe und von einem Wetterdienst. Inoffizielles Community-Addon, ohne Verbindung zu Netatmo/Legrand oder ABB/Busch-Jaeger. Anleitung, Quellcode und Support: https://github.com/dn-falk/netatmo-ws-freeathome-connector"
   },
-  "version": "1.0.0",
+  "version": "1.0.1",
   "license": "MIT",
   "author": "Dennis Nikolas Falk",
   "url": "https://github.com/dn-falk/netatmo-ws-freeathome-connector",
