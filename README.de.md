@@ -157,6 +157,12 @@ Nach dem Speichern verbindet sich das Addon. **Status** zeigt z. B. „Verbunden
 **Stationen neu einlesen** liest die Station sofort, z. B. nachdem in der Netatmo-App ein Modul
 hinzugefügt wurde.
 
+Beim ersten Start legt das Addon die free@home-Geräte an. Der System Access Point braucht dafür je
+Gerät etliche Sekunden, das Ganze kann einige Minuten dauern. Solange zeigt **Status** den Fortschritt,
+z. B. „free@home-Geräte werden eingerichtet (3 von 12)“; jedes Gerät bekommt seine Werte, sobald es
+angelegt ist. Die Statuszeilen werden beim Öffnen der Einstellungen gelesen – für den aktuellen Stand
+die Einstellungen neu öffnen.
+
 **Der Refresh Token wird automatisch erneuert.** Netatmo gibt alle paar Stunden einen neuen Refresh
 Token aus und macht den vorherigen ungültig. Das Addon speichert den aktuellen Token selbst in seiner
 Konfiguration (verstecktes Feld „Gespeicherter Token“) und arbeitet deshalb auch nach einem Neustart

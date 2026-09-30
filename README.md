@@ -151,6 +151,11 @@ device(s)", **Current data sources** e.g. "Temperature outdoor module · Rain we
 with rain) · Wind weather map (3 stations) · Brightness 23500 lx Open-Meteo". **Reload stations**
 reads the station at once, e.g. after adding a module in the Netatmo app.
 
+On the first start the addon creates the free@home devices. The System Access Point needs quite a
+few seconds per device, so this can take a few minutes. Meanwhile **Status** shows the progress, e.g.
+"setting up the free@home devices (3 of 12)"; every device gets its values as soon as it exists. The
+status lines are read when the settings are opened – reopen them for the current state.
+
 **The refresh token is renewed automatically.** Netatmo issues a new refresh token every few hours
 and invalidates the previous one. The addon stores the current token itself in its configuration
 (hidden field "Stored token"), so it keeps working after a restart. The token you entered stays

@@ -128,11 +128,51 @@ describe("Bridge (simulated Netatmo cloud)", () => {
         };
         const { statuses } = await start({ registry });
         await waitFor(() => statuses.some((status) => status.state === "online"), 3_000, "online");
-        assert.deepEqual(statuses.map(({ state, devices, complete }) => ({ state, devices, complete })), [{ state: "online", devices: 0, complete: false }]);
+        assert.deepEqual(statuses.map(({ state, devices, plannedDevices, complete }) => ({ state, devices, plannedDevices, complete })),
+            [{ state: "online", devices: 0, plannedDevices: 9, complete: false }]);
         release();
         await waitFor(() => statuses.at(-1)?.complete === true, 3_000, "first update finished");
         assert.equal(statuses.at(-1)?.devices, 9);
         assert.equal(statuses.at(-1)?.sources.length, 1);
+    });
+
+    it("creates several devices at the same time, each with all its values right away", async () => {
+        const registry = new FakeRegistry();
+        const getOrCreate = registry.getOrCreate.bind(registry);
+        const pending = new Map<string, () => void>();
+        let mostAtOnce = 0;
+        registry.getOrCreate = async (nativeId, name, type) => {
+            await new Promise<void>((resolve) => {
+                pending.set(nativeId, resolve);
+                mostAtOnce = Math.max(mostAtOnce, pending.size);
+            });
+            return getOrCreate(nativeId, name, type);
+        };
+        const release = (nativeId: string) => {
+            pending.get(nativeId)?.();
+            pending.delete(nativeId);
+        };
+        const { statuses } = await start({ registry });
+        await waitFor(() => pending.size === 4, 3_000, "four devices being created");
+        assert.ok(pending.has(WS));
+
+        // The weather station is there: values of the station, the weather map and the weather service at once.
+        release(WS);
+        await waitFor(() => registry.handles.get(WS)?.output(PairingId.AL_RAIN_ALARM) === "1", 3_000, "rain alarm of the weather map");
+        const ws = registry.handle(WS);
+        assert.ok(ws.output(PairingId.AL_WIND_SPEED) !== undefined);
+        assert.ok(ws.output(PairingId.AL_BRIGHTNESS_LEVEL) !== undefined);
+        assert.equal(ws.output(PairingId.AL_OUTDOOR_TEMPERATURE), "12.3");
+        await waitFor(() => statuses.at(-1)?.devices === 1, 3_000, "progress");
+        assert.equal(statuses.at(-1)?.complete, false);
+
+        await waitFor(() => {
+            [...pending.keys()].forEach(release);
+            return statuses.at(-1)?.complete === true;
+        }, 3_000, "all devices");
+        assert.equal(registry.devices.size, 9);
+        assert.equal(mostAtOnce, 4);
+        assert.equal(registry.handle("netatmo-70ee50000001-co2").output(PairingId.AL_INFO_CO_2), "812");
     });
 
     it("reports a rejected refresh token", async () => {

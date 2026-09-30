@@ -67,6 +67,8 @@ export interface BridgeStatus {
     devices: number;
     error?: Error;
     sources: StationSources[];
+    /** free@home devices the settings provide (`devices`: the ones set up so far) */
+    plannedDevices: number;
     /** false until the first update after the start (devices, weather map, values) has finished */
     complete: boolean;
 }
@@ -91,6 +93,8 @@ const AUTH_RETRY_DELAY_MS = 30 * 60_000;
 const RATE_LIMIT_DELAY_MS = 15 * 60_000;
 const STOP_WAIT_MS = 1_500;
 const LOW_BATTERY_PERCENT = 20;
+/** The System Access Point needs many seconds for every new virtual device. */
+const PARALLEL_DEVICE_CREATIONS = 4;
 
 export declare interface Bridge {
     on(event: "status", listener: (status: BridgeStatus) => void): this;
@@ -123,6 +127,9 @@ export class Bridge extends EventEmitter {
     private readonly publicData = new Map<string, Partial<Record<PublicDataKind, CachedPublicData>>>();
     private readonly lowBattery = new Set<string>();
     private stations: StationData[] = [];
+    private plannedDevices = 0;
+    /** Netatmo stations with a free@home weather station in the settings. */
+    private weatherStationIds = new Set<string>();
     private state: BridgeState = "connecting";
     private error: Error | undefined;
     private sources: StationSources[] = [];
@@ -156,6 +163,7 @@ export class Bridge extends EventEmitter {
             devices: this.managed.size,
             error: this.error,
             sources: this.sources,
+            plannedDevices: this.plannedDevices,
             complete: this.complete,
         };
     }
@@ -217,7 +225,10 @@ export class Bridge extends EventEmitter {
             return 0;
         const stations = parseStations(body);
         const firstTime = this.state !== "online";
+        const plan = planDevices(stations, this.settings.plan);
         this.stations = stations;
+        this.plannedDevices = plan.length;
+        this.weatherStationIds = new Set(plan.filter((device) => device.type === "WeatherStation").map((device) => device.stationId));
         this.state = "online";
         this.error = undefined;
         if (firstTime) {
@@ -227,11 +238,12 @@ export class Bridge extends EventEmitter {
             this.emitStatus();
         }
         this.checkBatteries(stations);
-        await this.syncDevices(stations);
-        if (this.running)
-            await this.updatePublicData(stations);
+        // Weather map and weather service first: new devices get all their values right away.
+        await this.updatePublicData(stations);
         if (this.running)
             await this.updateBrightness();
+        if (this.running)
+            await this.syncDevices(plan);
         this.publishAll();
         this.complete = true;
         return this.nextPollDelay(stations);
@@ -286,24 +298,19 @@ export class Bridge extends EventEmitter {
         }
     }
 
-    private async syncDevices(stations: StationData[]): Promise<void> {
-        const plan = planDevices(stations, this.settings.plan);
+    private async syncDevices(plan: PlannedDevice[]): Promise<void> {
         const wanted = new Set(plan.map((device) => device.nativeId));
+        const missing: PlannedDevice[] = [];
         for (const planned of plan) {
             const known = this.managed.get(planned.nativeId);
-            if (known) {
+            if (known)
                 known.plan = planned;
-                continue;
-            }
-            try {
-                const device = await this.deps.devices.getOrCreate(planned.nativeId, planned.name, planned.type);
-                if (!this.running)
-                    return;
-                this.managed.set(planned.nativeId, { plan: planned, device });
-            } catch (error) {
-                this.log.error(`could not create free@home device '${planned.name}': ${errorMessage(error)}`);
-            }
+            else
+                missing.push(planned);
         }
+        await this.createDevices(missing);
+        if (!this.running)
+            return;
         for (const [nativeId, { device }] of this.managed) {
             if (wanted.has(nativeId))
                 continue;
@@ -319,6 +326,29 @@ export class Bridge extends EventEmitter {
                 await device.setAvailable(false);
             }
         }
+    }
+
+    /**
+     * Creates several devices at the same time (the System Access Point needs many seconds for
+     * each one on the first start); every device shows its values as soon as it is there.
+     */
+    private async createDevices(missing: PlannedDevice[]): Promise<void> {
+        const queue = [...missing];
+        const work = async () => {
+            for (let planned = queue.shift(); planned && this.running; planned = queue.shift()) {
+                try {
+                    const device = await this.deps.devices.getOrCreate(planned.nativeId, planned.name, planned.type);
+                    if (!this.running)
+                        return;
+                    this.managed.set(planned.nativeId, { plan: planned, device });
+                    this.publishAll();
+                    this.emitStatus();
+                } catch (error) {
+                    this.log.error(`could not create free@home device '${planned.name}': ${errorMessage(error)}`);
+                }
+            }
+        };
+        await Promise.all(Array.from({ length: Math.min(PARALLEL_DEVICE_CREATIONS, queue.length) }, work));
     }
 
     private stationLocation(station: StationData): Location | undefined {
@@ -359,7 +389,7 @@ export class Bridge extends EventEmitter {
     }
 
     private hasWeatherStation(station: StationData): boolean {
-        return [...this.managed.values()].some((entry) => entry.plan.type === "WeatherStation" && entry.plan.stationId === station.id);
+        return this.weatherStationIds.has(station.id);
     }
 
     private brightnessService(station: StationData): BrightnessService | undefined {
@@ -474,7 +504,7 @@ export class Bridge extends EventEmitter {
             return;
         const status = this.status;
         // Without the brightness values, which change every minute.
-        const key = JSON.stringify([status.state, status.stations, status.devices, status.error?.message, this.lastSourcesText, status.complete]);
+        const key = JSON.stringify([status.state, status.stations, status.devices, status.plannedDevices, status.error?.message, this.lastSourcesText, status.complete]);
         if (key === this.lastEmitted)
             return;
         this.lastEmitted = key;

@@ -189,9 +189,9 @@ describe("status", () => {
     }];
 
     it("describes the states in German and English", () => {
-        const online: AddonStatus = { state: "online", stations: 1, devices: 9, sources, complete: true };
+        const online: AddonStatus = { state: "online", stations: 1, devices: 9, plannedDevices: 9, sources, complete: true };
         assert.equal(describeStatus(online).de, "Verbunden, 1 Station(en), 9 free@home-Geräte");
-        assert.match(describeStatus({ state: "online", stations: 0, devices: 0, sources: [], complete: true }).en, /no weather station/);
+        assert.match(describeStatus({ state: "online", stations: 0, devices: 0, plannedDevices: 0, sources: [], complete: true }).en, /no weather station/);
         assert.match(describeStatus({ state: "offline", error: "timeout", reason: "other", sources: [] }).de, /Netatmo nicht erreichbar/);
         assert.match(describeStatus({ state: "offline", error: "x", reason: "scope", sources: [] }).de, /read_station/);
         assert.match(describeStatus({ state: "offline", error: "x", reason: "rateLimit", sources: [] }).en, /Too many requests/);
@@ -206,16 +206,17 @@ describe("status", () => {
     });
 
     it("maps the bridge status", () => {
-        assert.deepEqual(fromBridgeStatus({ state: "online", stations: 1, devices: 2, sources: [], complete: false }),
-            { state: "online", stations: 1, devices: 2, sources: [], complete: false });
-        assert.deepEqual(fromBridgeStatus({ state: "offline", stations: 1, devices: 2, sources: [], complete: true, error: new NetatmoError("token request failed", "auth") }),
+        assert.deepEqual(fromBridgeStatus({ state: "online", stations: 1, devices: 2, plannedDevices: 9, sources: [], complete: false }),
+            { state: "online", stations: 1, devices: 2, plannedDevices: 9, sources: [], complete: false });
+        assert.deepEqual(fromBridgeStatus({ state: "offline", stations: 1, devices: 2, plannedDevices: 9, sources: [], complete: true, error: new NetatmoError("token request failed", "auth") }),
             { state: "offline", error: "token request failed", reason: "auth", sources: [] });
-        assert.deepEqual(fromBridgeStatus({ state: "connecting", stations: 0, devices: 0, sources: [], complete: false }), { state: "connecting" });
+        assert.deepEqual(fromBridgeStatus({ state: "connecting", stations: 0, devices: 0, plannedDevices: 0, sources: [], complete: false }), { state: "connecting" });
     });
 
     it("waits in the settings for the result of a connection", () => {
-        const online: AddonStatus = { state: "online", stations: 1, devices: 0, sources: [], complete: false };
-        assert.equal(describeStatus(online).de, "Verbunden, 1 Station(en), free@home-Geräte werden eingerichtet …");
+        const online: AddonStatus = { state: "online", stations: 1, devices: 3, plannedDevices: 12, sources: [], complete: false };
+        assert.equal(describeStatus(online).de, "Verbunden, 1 Station(en), free@home-Geräte werden eingerichtet (3 von 12) …");
+        assert.equal(describeStatus({ ...online, devices: 0, plannedDevices: 0 }).en, "Connected, 1 station(s), setting up the free@home devices …");
         assert.equal(isSettled({ state: "starting" }), false);
         assert.equal(isSettled({ state: "connecting" }), false);
         assert.equal(isSettled(online), false, "only after the first update");
