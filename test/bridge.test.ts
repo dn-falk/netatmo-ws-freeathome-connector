@@ -116,6 +116,25 @@ describe("Bridge (simulated Netatmo cloud)", () => {
         assert.equal(registry.device("netatmo-70ee50000001-co2").isAvailable, true);
     });
 
+    it("reports the connection before the devices are created", async () => {
+        // Creating virtual devices can take many seconds per device on a System Access Point.
+        let release: () => void = () => undefined;
+        const gate = new Promise<void>((resolve) => release = resolve);
+        const registry = new FakeRegistry();
+        const getOrCreate = registry.getOrCreate.bind(registry);
+        registry.getOrCreate = async (...args) => {
+            await gate;
+            return getOrCreate(...args);
+        };
+        const { statuses } = await start({ registry });
+        await waitFor(() => statuses.some((status) => status.state === "online"), 3_000, "online");
+        assert.deepEqual(statuses.map(({ state, devices, complete }) => ({ state, devices, complete })), [{ state: "online", devices: 0, complete: false }]);
+        release();
+        await waitFor(() => statuses.at(-1)?.complete === true, 3_000, "first update finished");
+        assert.equal(statuses.at(-1)?.devices, 9);
+        assert.equal(statuses.at(-1)?.sources.length, 1);
+    });
+
     it("reports a rejected refresh token", async () => {
         const { statuses } = await start({ settings: { refreshToken: "revoked" } });
         await waitFor(() => statuses.some((status) => status.state === "offline"), 3_000, "offline");

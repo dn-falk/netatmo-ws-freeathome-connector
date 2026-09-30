@@ -10,10 +10,12 @@ import { App } from "./app";
 import { ChannelLike, DeviceHandle } from "./fah/device";
 import { FahDeviceRegistry } from "./fah/registry";
 import { Logger, errorMessage } from "./log";
-import { applicationState, parameterConfig } from "./status";
+import { applicationState, isSettled, parameterConfig } from "./status";
 
 const log = new Logger("main");
 const SHUTDOWN_TIMEOUT_MS = 5_000;
+/** Longest wait for the result of a (re)connection before the settings get the status line. */
+const STATUS_WAIT_MS = 5_000;
 
 /** Adapts a channel of the library to the interface the addon uses. */
 function channelLike(channel: ApiVirtualChannel): ChannelLike {
@@ -66,8 +68,11 @@ function main(): void {
     addOn.connectToEvents();
 
     // Status lines in the addon settings (parameters "status" and "currentSources", see free-at-home-metadata.json).
+    // The settings ask only once when they are opened, also right after saving, which reconnects:
+    // wait a moment for the result instead of showing "Connecting" until they are opened again.
     const rpc = new RpcWebsocket(metaData.id);
-    rpc.addMethod("getParameterConfig", (params?: { $parameter?: string }) => parameterConfig(app.getStatus(), params?.$parameter));
+    rpc.addMethod("getParameterConfig", async (params?: { $parameter?: string }) =>
+        parameterConfig(await app.waitForStatus(isSettled, STATUS_WAIT_MS), params?.$parameter));
 
     // After a restart of the System Access Point: life sign and all values again.
     freeAtHome.on("open", () => {

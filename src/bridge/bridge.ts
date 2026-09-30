@@ -67,6 +67,8 @@ export interface BridgeStatus {
     devices: number;
     error?: Error;
     sources: StationSources[];
+    /** false until the first update after the start (devices, weather map, values) has finished */
+    complete: boolean;
 }
 
 interface ManagedDevice {
@@ -124,6 +126,7 @@ export class Bridge extends EventEmitter {
     private state: BridgeState = "connecting";
     private error: Error | undefined;
     private sources: StationSources[] = [];
+    private complete = false;
     private lastSourcesText = "";
     private lastEmitted = "";
     private running = false;
@@ -153,6 +156,7 @@ export class Bridge extends EventEmitter {
             devices: this.managed.size,
             error: this.error,
             sources: this.sources,
+            complete: this.complete,
         };
     }
 
@@ -219,6 +223,8 @@ export class Bridge extends EventEmitter {
         if (firstTime) {
             this.log.info(`connected to Netatmo: ${stations.length} station(s)`
                 + stations.map((station) => ` '${station.name}' (${allModules(station).map((module) => module.name).join(", ")})`).join(","));
+            // Right away: creating the devices and reading the weather map can take a while.
+            this.emitStatus();
         }
         this.checkBatteries(stations);
         await this.syncDevices(stations);
@@ -227,6 +233,7 @@ export class Bridge extends EventEmitter {
         if (this.running)
             await this.updateBrightness();
         this.publishAll();
+        this.complete = true;
         return this.nextPollDelay(stations);
     }
 
@@ -467,7 +474,7 @@ export class Bridge extends EventEmitter {
             return;
         const status = this.status;
         // Without the brightness values, which change every minute.
-        const key = JSON.stringify([status.state, status.stations, status.devices, status.error?.message, this.lastSourcesText]);
+        const key = JSON.stringify([status.state, status.stations, status.devices, status.error?.message, this.lastSourcesText, status.complete]);
         if (key === this.lastEmitted)
             return;
         this.lastEmitted = key;

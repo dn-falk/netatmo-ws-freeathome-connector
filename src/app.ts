@@ -72,12 +72,35 @@ export class App {
     private saving: Promise<void> = Promise.resolve();
     /** Times the current token state was written again because the configuration lacked it. */
     private rewrites = 0;
+    private readonly statusListeners = new Set<(status: AddonStatus) => void>();
     private readonly log = new Logger("app");
 
     constructor(private readonly deps: AppDependencies) {}
 
     getStatus(): AddonStatus {
         return this.status;
+    }
+
+    /**
+     * Resolves with the status as soon as `settled` accepts it, at the latest after `timeoutMs`
+     * with the status at that time.
+     */
+    waitForStatus(settled: (status: AddonStatus) => boolean, timeoutMs: number): Promise<AddonStatus> {
+        if (settled(this.status))
+            return Promise.resolve(this.status);
+        return new Promise((resolve) => {
+            const done = () => {
+                clearTimeout(timer);
+                this.statusListeners.delete(listener);
+                resolve(this.status);
+            };
+            const listener = (status: AddonStatus) => {
+                if (settled(status))
+                    done();
+            };
+            const timer = setTimeout(done, timeoutMs);
+            this.statusListeners.add(listener);
+        });
     }
 
     /** Applies a configuration; calls are processed one after another. */
@@ -196,5 +219,7 @@ export class App {
     private setStatus(status: AddonStatus): void {
         this.status = status;
         this.deps.publishStatus(status);
+        for (const listener of [...this.statusListeners])
+            listener(status);
     }
 }

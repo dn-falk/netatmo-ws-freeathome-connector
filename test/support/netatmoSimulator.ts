@@ -73,6 +73,8 @@ export class NetatmoSimulator {
     failWith: { status: number; code: number; message: string } | undefined;
     /** Weather services answer with HTTP 503. */
     weatherServiceDown = false;
+    /** Every answer is delayed by this many milliseconds (a slow cloud). */
+    responseDelayMs = 0;
     private validRefreshTokens = new Set<string>();
     private validAccessTokens = new Set<string>();
     private tokenCounter = 0;
@@ -148,8 +150,14 @@ export class NetatmoSimulator {
             this.requests.push(request);
             this.log(`${request.method} ${url.pathname}${url.search}`);
             const json = (status: number, payload: unknown) => {
-                res.writeHead(status, { "Content-Type": "application/json" });
-                res.end(JSON.stringify(payload));
+                const send = () => {
+                    res.writeHead(status, { "Content-Type": "application/json" });
+                    res.end(JSON.stringify(payload));
+                };
+                if (this.responseDelayMs > 0)
+                    setTimeout(send, this.responseDelayMs);
+                else
+                    send();
             };
 
             switch (url.pathname) {
