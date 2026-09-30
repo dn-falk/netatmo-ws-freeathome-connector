@@ -77,7 +77,7 @@ describe("Bridge (simulated Netatmo cloud)", () => {
 
         assert.equal(registry.handle("netatmo-70ee50000001-temperature").output(PairingId.AL_MEASURED_TEMPERATURE), "21.4");
         assert.equal(registry.handle("netatmo-70ee50000001-co2").output(PairingId.AL_INFO_CO_2), "812");
-        assert.equal(registry.handle("netatmo-70ee50000001-pressure").output(PairingId.AL_INFO_PRESSURE), "1016.2");
+        assert.equal(registry.handle("netatmo-70ee50000001-pressure").output(PairingId.AL_INFO_PRESSURE), "101620");
         assert.equal(registry.handle("netatmo-020000000001-humidity").output(PairingId.AL_HUMIDITY), "81");
         assert.equal(registry.handle("netatmo-030000000001-co2").output(PairingId.AL_INFO_CO_2), "1310");
 
@@ -138,7 +138,7 @@ describe("Bridge (simulated Netatmo cloud)", () => {
         const air = registry.handle("netatmo-70ee50000001-air");
         assert.equal(air.output(PairingId.AL_MEASURED_TEMPERATURE), "21.4");
         assert.equal(air.output(PairingId.AL_HUMIDITY), "48");
-        assert.equal(air.output(PairingId.AL_INFO_PRESSURE), "1016.2");
+        assert.equal(air.output(PairingId.AL_INFO_PRESSURE), "101620");
         assert.equal(registry.device("netatmo-030000000001-air").name, "Schlafzimmer Indoor climate");
         await waitFor(() => registry.handle("netatmo-70ee50000001-temperature").unresponsiveCalls === 1, 3_000, "old device unreachable");
         const ws = registry.handle(WS);

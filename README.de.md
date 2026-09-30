@@ -213,7 +213,9 @@ sie an. Für Details in den Einstellungen das **Debug-Protokoll** einschalten.
   Healthy Home Coach oder andere Netatmo-Produkte. Stationen, denen man nur als Favorit folgt, werden
   nicht verwendet.
 - Die free@home-Gerätetypen der Local API sind nur knapp dokumentiert. Das Addon schreibt nur auf
-  Datenpunkte, die der SysAP für das Gerät tatsächlich meldet.
+  Datenpunkte, die der SysAP für das Gerät tatsächlich meldet. Die Einheiten folgen der Referenz der
+  Pairing IDs der free@home Local API: Helligkeit in lx, Windgeschwindigkeit in m/s, Luftdruck in Pa
+  (Netatmo liefert hPa, das Addon rechnet um).
 - Getestet mit Unit- und Integrationstests gegen eine simulierte Netatmo-Cloud und einen simulierten
   System Access Point, jeweils mit der echten free@home-Bibliothek. Der Speicherbedarf liegt etwa
   beim [Somfy-TaHoma-Connector](https://github.com/dn-falk/somfy-freeathome-connector) (SysAP-Grenze

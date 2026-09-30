@@ -203,7 +203,9 @@ turn on **Debug logging** in the settings.
 - Only the Netatmo **Weather Station** (NAMain with modules NAModule1–4) is supported, not the Healthy
   Home Coach or other Netatmo products. Stations you only follow as favourites are not used.
 - The free@home device types of the local API are documented only briefly. The addon writes only to
-  datapoints the SysAP actually reports for the device.
+  datapoints the SysAP actually reports for the device. The units follow the pairing ID reference
+  of the free@home local API: brightness in lx, wind speed in m/s, air pressure in Pa (Netatmo
+  delivers hPa, the addon converts).
 - Tested with unit and integration tests against a simulated Netatmo cloud and a simulated System
   Access Point, both with the real free@home library. Memory use is about the same as that of the
   [Somfy-TaHoma-Connector](https://github.com/dn-falk/somfy-freeathome-connector) (SysAP limit 64 MB

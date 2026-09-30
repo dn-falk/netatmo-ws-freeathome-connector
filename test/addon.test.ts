@@ -108,7 +108,7 @@ describe("addon process (real free@home library, fake System Access Point)", () 
             [WS, PairingId.AL_WIND_SPEED, "5"], // gusts of 18 km/h
             [WS, PairingId.AL_WIND_FORCE, "3"],
             ["netatmo-70ee50000001-co2", PairingId.AL_INFO_CO_2, "812"],
-            ["netatmo-70ee50000001-pressure", PairingId.AL_INFO_PRESSURE, "1016.2"],
+            ["netatmo-70ee50000001-pressure", PairingId.AL_INFO_PRESSURE, "101620"],
             ["netatmo-020000000001-humidity", PairingId.AL_HUMIDITY, "81"],
         ];
         for (const [nativeId, pairingId, value] of expected)

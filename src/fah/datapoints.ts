@@ -24,7 +24,7 @@ export const PairingId = {
     AL_BRIGHTNESS_LEVEL: 0x0403,
     /** Weather station, wind channel: wind speed (m/s). */
     AL_WIND_SPEED: 0x0404,
-    /** Air quality sensor: air pressure (hPa). */
+    /** Air quality sensor: air pressure (Pa, DPT_VALUE_PRES like KNX 9.006). */
     AL_INFO_PRESSURE: 0x061A,
     /** Air quality sensor: CO2 (ppm). */
     AL_INFO_CO_2: 0x061B,
@@ -171,5 +171,6 @@ export const OUTPUT_RULES: readonly OutputRule[] = [
             return flag(enabled && values.co2 >= level);
         },
     },
-    measured(PairingId.AL_INFO_PRESSURE, "pressure", fixed(1)),
+    // Netatmo delivers hPa, the datapoint is in Pa.
+    measured(PairingId.AL_INFO_PRESSURE, "pressure", (hPa) => String(Math.round(hPa * 100))),
 ];

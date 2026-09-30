@@ -96,7 +96,7 @@ describe("FahDevice", () => {
         assert.equal(channel.outputs.get(PairingId.AL_MEASURED_TEMPERATURE), "21.4");
         assert.equal(channel.outputs.get(PairingId.AL_HUMIDITY), "48");
         assert.equal(channel.outputs.get(PairingId.AL_INFO_CO_2), "1234");
-        assert.equal(channel.outputs.get(PairingId.AL_INFO_PRESSURE), "1016.2");
+        assert.equal(channel.outputs.get(PairingId.AL_INFO_PRESSURE), "101624", "hPa from Netatmo, Pa for free@home");
         assert.equal(channel.outputs.get(PairingId.AL_CO2_ALERT), "1");
         assert.equal(channel.outputs.has(PairingId.AL_OUTDOOR_TEMPERATURE), false);
 
