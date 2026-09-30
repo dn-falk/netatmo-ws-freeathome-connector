@@ -69,6 +69,7 @@ export interface PublicMeasure {
     rain_24h?: number;
     rain_live?: number;
     rain_timeutc?: number;
+    rain_utc?: number;
     wind_strength?: number;
     wind_angle?: number;
     gust_strength?: number;

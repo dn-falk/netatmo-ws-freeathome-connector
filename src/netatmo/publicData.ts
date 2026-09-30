@@ -25,14 +25,17 @@ export function distanceKm(a: Location, b: Location): number {
     return 2 * EARTH_RADIUS_KM * Math.asin(Math.min(1, Math.sqrt(h)));
 }
 
+/** /getpublicdata accepts latitudes from -85 to 85 only. */
+const MAX_LATITUDE = 85;
+
 /** Area around a location that contains the circle with the given radius. */
 export function boundingBox(center: Location, radiusKm: number): BoundingBox {
     const dLat = radiusKm / 111.32;
     const dLon = radiusKm / (111.32 * Math.max(0.01, Math.cos(toRadians(center.latitude))));
     return {
-        latNE: Math.min(90, center.latitude + dLat),
+        latNE: Math.min(MAX_LATITUDE, center.latitude + dLat),
         lonNE: Math.min(180, center.longitude + dLon),
-        latSW: Math.max(-90, center.latitude - dLat),
+        latSW: Math.max(-MAX_LATITUDE, center.latitude - dLat),
         lonSW: Math.max(-180, center.longitude - dLon),
     };
 }
@@ -67,7 +70,8 @@ function parsePublicStation(raw: RawPublicStation, center: Location): PublicStat
         const temperature = latestValue(measure, "temperature");
         if (temperature)
             station.temperature = temperature;
-        const rainTime = finite(measure.rain_timeutc);
+        // The API sends "rain_timeutc"; its specification names the field "rain_utc".
+        const rainTime = finite(measure.rain_timeutc) ?? finite(measure.rain_utc);
         const rainLive = finite(measure.rain_live);
         if (rainTime !== undefined && rainLive !== undefined)
             station.rain = { live: rainLive, hour: finite(measure.rain_60min), time: rainTime * 1000 };

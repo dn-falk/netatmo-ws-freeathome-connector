@@ -73,6 +73,8 @@ describe("public weather map", () => {
         const box = boundingBox(FRANKFURT, 5);
         assert.ok(Math.abs(distanceKm(FRANKFURT, { latitude: box.latNE, longitude: FRANKFURT.longitude }) - 5) < 0.05);
         assert.ok(Math.abs(distanceKm(FRANKFURT, { latitude: FRANKFURT.latitude, longitude: box.lonNE }) - 5) < 0.05);
+        const north = boundingBox({ latitude: 84.99, longitude: 10 }, 5);
+        assert.equal(north.latNE, 85, "the API accepts latitudes up to 85° only");
         assert.equal(median([3, 1, 2]), 2);
         assert.equal(median([4, 1, 2, 3]), 2.5);
         assert.equal(median([]), undefined);
@@ -93,10 +95,13 @@ describe("public weather map", () => {
                 },
             },
             { _id: "own", place: { location: [8.6821, 50.1109] }, measures: {} },
+            { _id: "spec", place: { location: [8.683, 50.111] }, measures: { r: { rain_live: 0, rain_utc: time } } },
             { _id: "second", place: { location: [8.70, 50.12] }, measures: { p: { res: { [time]: [1012] }, type: ["pressure"] } } },
             { place: { location: [8.70, 50.12] } },
         ], FRANKFURT, 5, new Set(["own"]));
-        assert.deepEqual(stations.map((station) => station.id), ["near", "second"]);
+        assert.deepEqual(stations.map((station) => station.id), ["spec", "near", "second"]);
+        assert.deepEqual(stations[0].rain, { live: 0, hour: undefined, time: time * 1000 }, "field name of the specification");
+        stations.shift();
         assert.deepEqual(stations[0].temperature, { value: 12, time: time * 1000 });
         assert.deepEqual(stations[0].rain, { live: 0.2, hour: 1.1, time: time * 1000 });
         assert.deepEqual(stations[0].wind, { strength: 10, gust: 25, time: time * 1000 });
