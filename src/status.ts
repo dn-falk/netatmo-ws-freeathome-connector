@@ -10,13 +10,20 @@ export type AddonStatus =
     | { state: "starting" }
     | { state: "configurationNeeded"; problems: Message[] }
     | { state: "connecting" }
-    | { state: "online"; stations: number; devices: number; sources: StationSources[] }
+    | { state: "online"; stations: number; devices: number; plannedDevices: number; sources: StationSources[]; complete: boolean }
     | { state: "offline"; error: string; reason: OfflineReason; sources: StationSources[] };
 
 export function fromBridgeStatus(status: BridgeStatus): AddonStatus {
     switch (status.state) {
         case "online":
-            return { state: "online", stations: status.stations, devices: status.devices, sources: status.sources };
+            return {
+                state: "online",
+                stations: status.stations,
+                devices: status.devices,
+                plannedDevices: status.plannedDevices,
+                sources: status.sources,
+                complete: status.complete,
+            };
         case "offline": {
             const kind = status.error instanceof NetatmoError ? status.error.kind : undefined;
             const reason: OfflineReason = kind === "auth" || kind === "scope" || kind === "rateLimit" || kind === "appDeactivated" ? kind : "other";
@@ -43,6 +50,13 @@ export function describeStatus(status: AddonStatus): Message {
         case "online":
             if (status.stations === 0)
                 return { en: "Connected, but the Netatmo account has no weather station", de: "Verbunden, aber das Netatmo-Konto hat keine Wetterstation" };
+            if (!status.complete) {
+                const planned = status.plannedDevices;
+                return {
+                    en: `Connected, ${status.stations} station(s), setting up the free@home devices${planned ? ` (${status.devices} of ${planned})` : ""} …`,
+                    de: `Verbunden, ${status.stations} Station(en), free@home-Geräte werden eingerichtet${planned ? ` (${status.devices} von ${planned})` : ""} …`,
+                };
+            }
             return {
                 en: `Connected, ${status.stations} station(s), ${status.devices} free@home device(s)`,
                 de: `Verbunden, ${status.stations} Station(en), ${status.devices} free@home-Geräte`,
@@ -134,6 +148,23 @@ export function describeSources(status: AddonStatus): Message {
         return { en: prefix + text.en, de: prefix + text.de };
     });
     return { en: parts.map((part) => part.en).join(" | "), de: parts.map((part) => part.de).join(" | ") };
+}
+
+/**
+ * Whether the status is worth showing in the addon settings, which ask for it only once when
+ * they are opened (also right after saving, which reconnects): not while connecting and not
+ * before the first update after connecting has finished.
+ */
+export function isSettled(status: AddonStatus): boolean {
+    switch (status.state) {
+        case "starting":
+        case "connecting":
+            return false;
+        case "online":
+            return status.complete;
+        default:
+            return true;
+    }
 }
 
 function isError(status: AddonStatus): boolean {

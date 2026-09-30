@@ -167,6 +167,25 @@ describe("addon process (real free@home library, fake System Access Point)", () 
         assert.equal(parseTokenState(saved.netatmo.items.tokenState)?.refreshToken, "refresh-2");
     });
 
+    it("answers the status RPCs with the result of the reconnection after the settings were saved", async () => {
+        await check(() => sysap.rpcConnected, "RPC websocket");
+        const saved = sysap.savedConfigurations.at(-1) as { weather: { items: Record<string, unknown> } };
+        const before = sysap.applicationStates.length;
+        simulator.responseDelayMs = 200;
+        try {
+            // Saving the settings restarts the connection; the settings ask for the status lines right away.
+            sysap.setConfiguration({ ...saved, weather: { items: { ...saved.weather.items, publicRadius: 6 } } });
+            await check(() => sysap.applicationStates.slice(before).some((state) =>
+                (state as { state: { text: string } }).state.text === "Verbinde mit Netatmo …"), "reconnecting");
+            const status = await sysap.rpc("getParameterConfig", { $parameter: "status", $group: "netatmo" }) as Record<string, string>;
+            assert.equal(status["name@de"], "Verbunden, 1 Station(en), 9 free@home-Geräte");
+            const sources = await sysap.rpc("getParameterConfig", { $parameter: "currentSources", $group: "weather" }) as Record<string, string>;
+            assert.match(sources["name@de"], /^Temperatur Außenmodul · Regen Wetterkarte \(2\/2 Messer mit Regen\)/);
+        } finally {
+            simulator.responseDelayMs = 0;
+        }
+    });
+
     it("shows a rejected token in the status and shuts down cleanly", async () => {
         simulator.revokeRefreshTokens();
         simulator.expireAccessTokens();

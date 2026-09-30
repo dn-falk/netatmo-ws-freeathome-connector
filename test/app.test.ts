@@ -8,7 +8,7 @@ import { PairingId } from "../src/fah/datapoints";
 import { FahDeviceRegistry } from "../src/fah/registry";
 import { Logger } from "../src/log";
 import { NetatmoClient } from "../src/netatmo/client";
-import { AddonStatus, applicationState, describeSources, describeStatus, fromBridgeStatus, parameterConfig } from "../src/status";
+import { AddonStatus, applicationState, describeSources, describeStatus, fromBridgeStatus, isSettled, parameterConfig } from "../src/status";
 import { NetatmoError } from "../src/netatmo/errors";
 import { FakeHandle, FakeRegistry, waitFor } from "./support/fakes";
 import { NetatmoSimulator } from "./support/netatmoSimulator";
@@ -107,6 +107,19 @@ describe("App", () => {
         await restarted.app.shutdown();
     });
 
+    it("waits for the result of the connection when asked for the status", async () => {
+        const { simulator: sim } = await setup();
+        await app?.applyConfiguration(configuration({ clientId: sim.clientId, clientSecret: sim.clientSecret, refreshToken: sim.initialRefreshToken }));
+        assert.equal(app?.getStatus().state, "connecting");
+        const status = await app?.waitForStatus(isSettled, 3_000) as AddonStatus;
+        assert.ok(status.state === "online" && status.complete);
+        assert.match(describeSources(status).de, /^Temperatur Außenmodul/);
+        assert.equal(await app?.waitForStatus(() => true, 3_000), status, "settled: at once");
+        const started = Date.now();
+        assert.equal(await app?.waitForStatus(() => false, 50), app?.getStatus(), "at the latest after the timeout");
+        assert.ok(Date.now() - started < 1_000);
+    });
+
     async function setupAgain(sim: NetatmoSimulator) {
         const saved: Record<string, unknown>[] = [];
         const restartedApp = new App({
@@ -176,9 +189,9 @@ describe("status", () => {
     }];
 
     it("describes the states in German and English", () => {
-        const online: AddonStatus = { state: "online", stations: 1, devices: 9, sources };
+        const online: AddonStatus = { state: "online", stations: 1, devices: 9, plannedDevices: 9, sources, complete: true };
         assert.equal(describeStatus(online).de, "Verbunden, 1 Station(en), 9 free@home-Geräte");
-        assert.match(describeStatus({ state: "online", stations: 0, devices: 0, sources: [] }).en, /no weather station/);
+        assert.match(describeStatus({ state: "online", stations: 0, devices: 0, plannedDevices: 0, sources: [], complete: true }).en, /no weather station/);
         assert.match(describeStatus({ state: "offline", error: "timeout", reason: "other", sources: [] }).de, /Netatmo nicht erreichbar/);
         assert.match(describeStatus({ state: "offline", error: "x", reason: "scope", sources: [] }).de, /read_station/);
         assert.match(describeStatus({ state: "offline", error: "x", reason: "rateLimit", sources: [] }).en, /Too many requests/);
@@ -193,11 +206,23 @@ describe("status", () => {
     });
 
     it("maps the bridge status", () => {
-        assert.deepEqual(fromBridgeStatus({ state: "online", stations: 1, devices: 2, sources: [] }),
-            { state: "online", stations: 1, devices: 2, sources: [] });
-        assert.deepEqual(fromBridgeStatus({ state: "offline", stations: 1, devices: 2, sources: [], error: new NetatmoError("token request failed", "auth") }),
+        assert.deepEqual(fromBridgeStatus({ state: "online", stations: 1, devices: 2, plannedDevices: 9, sources: [], complete: false }),
+            { state: "online", stations: 1, devices: 2, plannedDevices: 9, sources: [], complete: false });
+        assert.deepEqual(fromBridgeStatus({ state: "offline", stations: 1, devices: 2, plannedDevices: 9, sources: [], complete: true, error: new NetatmoError("token request failed", "auth") }),
             { state: "offline", error: "token request failed", reason: "auth", sources: [] });
-        assert.deepEqual(fromBridgeStatus({ state: "connecting", stations: 0, devices: 0, sources: [] }), { state: "connecting" });
+        assert.deepEqual(fromBridgeStatus({ state: "connecting", stations: 0, devices: 0, plannedDevices: 0, sources: [], complete: false }), { state: "connecting" });
+    });
+
+    it("waits in the settings for the result of a connection", () => {
+        const online: AddonStatus = { state: "online", stations: 1, devices: 3, plannedDevices: 12, sources: [], complete: false };
+        assert.equal(describeStatus(online).de, "Verbunden, 1 Station(en), free@home-Geräte werden eingerichtet (3 von 12) …");
+        assert.equal(describeStatus({ ...online, devices: 0, plannedDevices: 0 }).en, "Connected, 1 station(s), setting up the free@home devices …");
+        assert.equal(isSettled({ state: "starting" }), false);
+        assert.equal(isSettled({ state: "connecting" }), false);
+        assert.equal(isSettled(online), false, "only after the first update");
+        assert.equal(isSettled({ ...online, complete: true }), true);
+        assert.equal(isSettled({ state: "offline", error: "timeout", reason: "other", sources: [] }), true);
+        assert.equal(isSettled({ state: "configurationNeeded", problems: [] }), true);
     });
 
     it("builds the parameters of the settings and the application state", () => {
