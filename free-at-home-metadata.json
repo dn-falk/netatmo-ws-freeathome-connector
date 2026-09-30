@@ -147,20 +147,24 @@
           "name@de": "Aktuelle Datenquellen",
           "type": "text",
           "rpc": "getParameterConfig",
-          "rpcCallOn": "initial"
+          "rpcCallOn": "initial",
+          "description": "Where the values of the weather station come from right now, e.g. \"Rain weather map (1/5 gauges with rain)\" or \"Brightness 23500 lx Open-Meteo\".",
+          "description@de": "Woher die Werte der Wetterstation gerade kommen, z. B. „Regen Wetterkarte (1/5 Messer mit Regen)“ oder „Helligkeit 23500 lx Open-Meteo“."
         },
         "sources": {
           "name": "Data sources",
           "name@de": "Datenquellen",
           "type": "separator",
-          "description": "\"Automatic\" uses the module of your station and otherwise nearby stations of the public Netatmo weather map.",
-          "description@de": "„Automatisch“ nutzt das Modul der eigenen Station und sonst Stationen der öffentlichen Netatmo-Wetterkarte in der Nähe."
+          "description": "Values your station cannot measure are filled in. \"Automatic\" uses the module of your station; if there is none, or it has not sent values for 30 minutes, nearby stations of the public Netatmo weather map are used (radius below). Brightness comes from a weather service or from the position of the sun (see below).",
+          "description@de": "Werte, die die eigene Station nicht misst, werden ergänzt. „Automatisch“ nutzt das Modul der eigenen Station; gibt es keins oder sendet es 30 Minuten lang nichts, werden Stationen der öffentlichen Netatmo-Wetterkarte in der Nähe verwendet (Umkreis unten). Die Helligkeit kommt von einem Wetterdienst oder aus dem Sonnenstand (siehe unten)."
         },
         "temperatureSource": {
           "name": "Outdoor temperature",
           "name@de": "Außentemperatur",
           "type": "select",
           "default": "auto",
+          "description": "Automatic: outdoor module; without one, the median of the 5 nearest public stations.",
+          "description@de": "Automatisch: Außenmodul; ohne eines der Median der 5 nächsten öffentlichen Stationen.",
           "options": [
             {
               "key": "auto",
@@ -189,6 +193,8 @@
           "name@de": "Regen",
           "type": "select",
           "default": "auto",
+          "description": "Automatic: own rain gauge; without one, the 5 nearest public rain gauges (see \"Rain: required public rain gauges\"). Values arrive every 10 minutes, so the rain alarm can come up to about 10 minutes later than with a heated rain sensor.",
+          "description@de": "Automatisch: eigener Regenmesser; ohne einen die 5 nächsten öffentlichen Regenmesser (siehe „Regen: nötige öffentliche Regenmesser“). Die Werte kommen alle 10 Minuten, der Regenalarm kann deshalb bis zu etwa 10 Minuten später kommen als bei einem beheizten Regensensor.",
           "options": [
             {
               "key": "auto",
@@ -216,6 +222,8 @@
           "name": "Wind",
           "type": "select",
           "default": "auto",
+          "description": "Automatic: own wind gauge; without one, the median of the 3 nearest public wind gauges.",
+          "description@de": "Automatisch: eigener Windmesser; ohne einen der Median der 3 nächsten öffentlichen Windmesser.",
           "options": [
             {
               "key": "auto",
@@ -244,6 +252,8 @@
           "name@de": "Helligkeit",
           "type": "select",
           "default": "openmeteo",
+          "description": "Netatmo has no light sensor. The addon converts the solar radiation of a weather service into lux (horizontal surface, approximate value) and follows the position of the sun between two queries; in the twilight it uses typical twilight values. If the last value of the weather service is older than 45 minutes (service not reachable), a cloudless sky is assumed until a new value arrives.",
+          "description@de": "Netatmo hat keinen Lichtsensor. Das Addon rechnet die Sonneneinstrahlung eines Wetterdienstes in Lux um (waagerechte Fläche, Näherungswert) und führt den Wert zwischen zwei Abfragen mit dem Sonnenstand nach; in der Dämmerung verwendet es typische Dämmerungswerte. Ist der letzte Wert des Wetterdienstes älter als 45 Minuten (Dienst nicht erreichbar), wird bis zum nächsten Wert wolkenloser Himmel angenommen.",
           "options": [
             {
               "key": "openmeteo",
@@ -265,15 +275,15 @@
               "name": "Off",
               "name@de": "Aus"
             }
-          ],
-          "description": "Netatmo has no light sensor. The addon converts the solar radiation of a weather service into lux (horizontal, approximate value) and follows the position of the sun between two queries.",
-          "description@de": "Netatmo hat keinen Lichtsensor. Das Addon rechnet die Sonneneinstrahlung eines Wetterdienstes in Lux um (horizontal, Näherungswert) und führt den Wert zwischen zwei Abfragen mit dem Sonnenstand nach."
+          ]
         },
         "windValue": {
           "name": "Wind speed",
           "name@de": "Windgeschwindigkeit",
           "type": "select",
           "default": "gust",
+          "description": "Gusts: highest gust of the last 5 minutes. Average: 5-minute average. Wind force (Beaufort) and wind alarm are derived from this value.",
+          "description@de": "Böen: stärkste Böe der letzten 5 Minuten. Mittelwert: 5-Minuten-Mittel. Windstärke (Beaufort) und Windalarm werden aus diesem Wert gebildet.",
           "options": [
             {
               "key": "gust",

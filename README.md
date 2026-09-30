@@ -55,7 +55,8 @@ the stations of the map within the configured radius (default 5 km) around your 
 
 The rain alarm stays on for 20 minutes after the last measured rain (setting), because rain gauges
 report light rain only every now and then. The status line "Current data sources" in the addon
-settings shows at any time where the values come from.
+settings shows at any time where the values come from; the settings explain the behaviour at each
+field.
 
 ### Brightness
 
@@ -71,8 +72,8 @@ weather service and converts it into illuminance (about 120 lx per W/m²):
 
 Between two queries the addon follows the position of the sun every minute (the cloudiness of the
 last query is applied to the current position of the sun), and in the twilight it uses typical
-twilight values. If the weather service cannot be reached for 45 minutes, the cloudless sky is
-assumed until it answers again.
+twilight values. If the last value of the weather service is older than 45 minutes (service not
+reachable), the cloudless sky is assumed until a new value arrives.
 
 > The value is an **approximation for a horizontal surface** and not a measurement at your house.
 > It is well suited for twilight and "sunny/not sunny"; for a façade-specific sun protection, choose

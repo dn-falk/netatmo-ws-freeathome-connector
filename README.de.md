@@ -58,7 +58,8 @@ Station:
 
 Der Regenalarm bleibt nach dem zuletzt gemessenen Regen 20 Minuten aktiv (Einstellung), weil
 Regenmesser leichten Regen nur ab und zu melden. Die Statuszeile „Aktuelle Datenquellen“ in den
-Addon-Einstellungen zeigt jederzeit, woher die Werte kommen.
+Addon-Einstellungen zeigt jederzeit, woher die Werte kommen; die Einstellungen erklären das
+Verhalten direkt am jeweiligen Feld.
 
 ### Helligkeit
 
@@ -74,8 +75,8 @@ Wetterdienstes und rechnet sie in Beleuchtungsstärke um (etwa 120 lx pro W/m²)
 
 Zwischen zwei Abfragen führt das Addon den Wert jede Minute mit dem Sonnenstand nach (die Bewölkung
 der letzten Abfrage wird auf den aktuellen Sonnenstand übertragen), in der Dämmerung verwendet es
-typische Dämmerungswerte. Ist der Wetterdienst 45 Minuten lang nicht erreichbar, wird bis zur
-nächsten Antwort wolkenloser Himmel angenommen.
+typische Dämmerungswerte. Ist der letzte Wert des Wetterdienstes älter als 45 Minuten (Dienst nicht
+erreichbar), wird bis zum nächsten Wert wolkenloser Himmel angenommen.
 
 > Der Wert ist ein **Näherungswert für eine waagerechte Fläche** und keine Messung am eigenen Haus.
 > Er eignet sich gut für Dämmerung und „sonnig/nicht sonnig“; für einen fassadengenauen Sonnenschutz
