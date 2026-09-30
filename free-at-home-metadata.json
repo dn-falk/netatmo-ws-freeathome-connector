@@ -1,0 +1,361 @@
+{
+  "id": "de.dennisfalk.freeathome.netatmo",
+  "name": {
+    "en": "Netatmo-Weather-Connector (unofficial)",
+    "de": "Netatmo-Wetter-Connector (inoffiziell)"
+  },
+  "description": {
+    "en": "Shows a Netatmo Smart Home Weather Station in free@home: the outdoor values as a free@home weather station (temperature, wind, rain, brightness) and the indoor modules as sensors for temperature, humidity, CO2 and air pressure. Values the station cannot measure are taken from nearby stations of the public Netatmo weather map and from a weather service. Unofficial community addon, not affiliated with or endorsed by Netatmo/Legrand or ABB/Busch-Jaeger. Instructions, source code and support: https://github.com/dn-falk/netatmo-ws-freeathome-connector",
+    "de": "Zeigt eine Netatmo Smarte Wetterstation in free@home an: die Außenwerte als free@home-Wetterstation (Temperatur, Wind, Regen, Helligkeit) und die Innenmodule als Sensoren für Temperatur, Luftfeuchte, CO2 und Luftdruck. Werte, die die Station nicht misst, kommen von Stationen der öffentlichen Netatmo-Wetterkarte in der Nähe und von einem Wetterdienst. Inoffizielles Community-Addon, ohne Verbindung zu Netatmo/Legrand oder ABB/Busch-Jaeger. Anleitung, Quellcode und Support: https://github.com/dn-falk/netatmo-ws-freeathome-connector"
+  },
+  "version": "1.0.0",
+  "license": "MIT",
+  "author": "Dennis Nikolas Falk",
+  "url": "https://github.com/dn-falk/netatmo-ws-freeathome-connector",
+  "supportUrl": "https://github.com/dn-falk/netatmo-ws-freeathome-connector/issues",
+  "type": "app",
+  "entryPoint": "build/main.js",
+  "minSysapVersion": "3.0.0",
+  "accessControl": {
+    "networkAccess": true
+  },
+  "parameters": {
+    "netatmo": {
+      "name": "Netatmo account",
+      "name@de": "Netatmo-Konto",
+      "items": {
+        "introduction": {
+          "name": "Preparation",
+          "name@de": "Vorbereitung",
+          "type": "separator",
+          "description": "At dev.netatmo.com, log in with your Netatmo account, create an app (My apps → Create) and generate a token with the scope read_station in the Token generator of the app. Enter client ID, client secret and the refresh token here.",
+          "description@de": "Auf dev.netatmo.com mit dem Netatmo-Konto anmelden, eine App anlegen (My apps → Create) und im „Token generator“ der App einen Token mit dem Scope read_station erzeugen. Client ID, Client Secret und den Refresh Token hier eintragen."
+        },
+        "clientId": {
+          "name": "Client ID",
+          "type": "string",
+          "required": true,
+          "description": "Client ID of your app on dev.netatmo.com.",
+          "description@de": "Client ID der eigenen App auf dev.netatmo.com."
+        },
+        "clientSecret": {
+          "name": "Client secret",
+          "type": "password",
+          "required": true,
+          "description": "Client secret of your app on dev.netatmo.com.",
+          "description@de": "Client Secret der eigenen App auf dev.netatmo.com."
+        },
+        "refreshToken": {
+          "name": "Refresh token",
+          "type": "password",
+          "required": true,
+          "description": "Refresh token from the Token generator (scope read_station). Netatmo replaces it regularly; the addon stores the current token itself. Only enter a new one if the status asks for it.",
+          "description@de": "Refresh Token aus dem „Token generator“ (Scope read_station). Netatmo ersetzt ihn regelmäßig; das Addon speichert den aktuellen Token selbst. Nur neu eintragen, wenn der Status dazu auffordert."
+        },
+        "tokenState": {
+          "name": "Stored token",
+          "name@de": "Gespeicherter Token",
+          "type": "hidden"
+        },
+        "status": {
+          "name": "Status",
+          "type": "text",
+          "rpc": "getParameterConfig",
+          "rpcCallOn": "initial"
+        },
+        "resync": {
+          "name": "Reload stations",
+          "name@de": "Stationen neu einlesen",
+          "type": "button",
+          "buttonLabel": "Reload",
+          "buttonLabel@de": "Neu einlesen"
+        }
+      }
+    },
+    "devices": {
+      "name": "Devices",
+      "name@de": "Geräte",
+      "items": {
+        "indoorSensors": {
+          "name": "Indoor modules",
+          "name@de": "Innenmodule",
+          "type": "select",
+          "default": "separate",
+          "options": [
+            {
+              "key": "separate",
+              "name": "One sensor per value (recommended)",
+              "name@de": "Ein Sensor pro Messwert (empfohlen)"
+            },
+            {
+              "key": "combined",
+              "name": "One air quality sensor per module",
+              "name@de": "Ein Luftqualitätssensor pro Modul"
+            },
+            {
+              "key": "off",
+              "name": "Do not create",
+              "name@de": "Nicht anlegen"
+            }
+          ],
+          "description": "How the base station and the indoor modules appear in free@home: separate sensors for temperature, humidity and CO2 (and air pressure for the base station), or one combined air quality sensor per module.",
+          "description@de": "Wie Basisstation und Innenmodule in free@home erscheinen: je ein Sensor für Temperatur, Luftfeuchte und CO2 (bei der Basisstation zusätzlich Luftdruck) oder ein kombinierter Luftqualitätssensor pro Modul."
+        },
+        "outdoorHumidity": {
+          "name": "Outdoor humidity sensor",
+          "name@de": "Sensor für Außen-Luftfeuchte",
+          "type": "boolean",
+          "default": true,
+          "description": "Creates a humidity sensor for the outdoor module (the free@home weather station has no humidity).",
+          "description@de": "Legt einen Luftfeuchtesensor für das Außenmodul an (die free@home-Wetterstation hat keine Luftfeuchte)."
+        },
+        "excludedModules": {
+          "name": "Excluded modules",
+          "name@de": "Ausgeschlossene Module",
+          "type": "string",
+          "description": "Comma separated names (as shown in the Netatmo app) of modules that should not be created in free@home.",
+          "description@de": "Kommagetrennte Namen (wie in der Netatmo-App) von Modulen, die nicht in free@home angelegt werden sollen."
+        },
+        "deviceNameLanguage": {
+          "name": "Language of new device names",
+          "name@de": "Sprache neuer Gerätenamen",
+          "type": "select",
+          "default": "de",
+          "options": [
+            {
+              "key": "de",
+              "name": "German",
+              "name@de": "Deutsch"
+            },
+            {
+              "key": "en",
+              "name": "English",
+              "name@de": "Englisch"
+            }
+          ],
+          "description": "Suffix of the device names (e.g. \"Kitchen Temperature\"). Devices can be renamed in free@home at any time.",
+          "description@de": "Zusatz der Gerätenamen (z. B. „Küche Temperatur“). Geräte können in free@home jederzeit umbenannt werden."
+        }
+      }
+    },
+    "weather": {
+      "name": "Weather station",
+      "name@de": "Wetterstation",
+      "items": {
+        "currentSources": {
+          "name": "Current data sources",
+          "name@de": "Aktuelle Datenquellen",
+          "type": "text",
+          "rpc": "getParameterConfig",
+          "rpcCallOn": "initial"
+        },
+        "sources": {
+          "name": "Data sources",
+          "name@de": "Datenquellen",
+          "type": "separator",
+          "description": "\"Automatic\" uses the module of your station and otherwise nearby stations of the public Netatmo weather map.",
+          "description@de": "„Automatisch“ nutzt das Modul der eigenen Station und sonst Stationen der öffentlichen Netatmo-Wetterkarte in der Nähe."
+        },
+        "temperatureSource": {
+          "name": "Outdoor temperature",
+          "name@de": "Außentemperatur",
+          "type": "select",
+          "default": "auto",
+          "options": [
+            {
+              "key": "auto",
+              "name": "Automatic",
+              "name@de": "Automatisch"
+            },
+            {
+              "key": "own",
+              "name": "Own outdoor module only",
+              "name@de": "Nur eigenes Außenmodul"
+            },
+            {
+              "key": "public",
+              "name": "Netatmo weather map",
+              "name@de": "Netatmo-Wetterkarte"
+            },
+            {
+              "key": "off",
+              "name": "Off",
+              "name@de": "Aus"
+            }
+          ]
+        },
+        "rainSource": {
+          "name": "Rain",
+          "name@de": "Regen",
+          "type": "select",
+          "default": "auto",
+          "options": [
+            {
+              "key": "auto",
+              "name": "Automatic",
+              "name@de": "Automatisch"
+            },
+            {
+              "key": "own",
+              "name": "Own rain gauge only",
+              "name@de": "Nur eigener Regenmesser"
+            },
+            {
+              "key": "public",
+              "name": "Netatmo weather map",
+              "name@de": "Netatmo-Wetterkarte"
+            },
+            {
+              "key": "off",
+              "name": "Off",
+              "name@de": "Aus"
+            }
+          ]
+        },
+        "windSource": {
+          "name": "Wind",
+          "type": "select",
+          "default": "auto",
+          "options": [
+            {
+              "key": "auto",
+              "name": "Automatic",
+              "name@de": "Automatisch"
+            },
+            {
+              "key": "own",
+              "name": "Own wind gauge only",
+              "name@de": "Nur eigener Windmesser"
+            },
+            {
+              "key": "public",
+              "name": "Netatmo weather map",
+              "name@de": "Netatmo-Wetterkarte"
+            },
+            {
+              "key": "off",
+              "name": "Off",
+              "name@de": "Aus"
+            }
+          ]
+        },
+        "brightnessSource": {
+          "name": "Brightness",
+          "name@de": "Helligkeit",
+          "type": "select",
+          "default": "openmeteo",
+          "options": [
+            {
+              "key": "openmeteo",
+              "name": "Open-Meteo (solar radiation, worldwide)",
+              "name@de": "Open-Meteo (Sonneneinstrahlung, weltweit)"
+            },
+            {
+              "key": "brightsky",
+              "name": "DWD via Bright Sky (measured, Germany only)",
+              "name@de": "DWD über Bright Sky (Messwerte, nur Deutschland)"
+            },
+            {
+              "key": "sun",
+              "name": "Calculated from the position of the sun (cloudless sky)",
+              "name@de": "Aus dem Sonnenstand berechnet (wolkenloser Himmel)"
+            },
+            {
+              "key": "off",
+              "name": "Off",
+              "name@de": "Aus"
+            }
+          ],
+          "description": "Netatmo has no light sensor. The addon converts the solar radiation of a weather service into lux (horizontal, approximate value) and follows the position of the sun between two queries.",
+          "description@de": "Netatmo hat keinen Lichtsensor. Das Addon rechnet die Sonneneinstrahlung eines Wetterdienstes in Lux um (horizontal, Näherungswert) und führt den Wert zwischen zwei Abfragen mit dem Sonnenstand nach."
+        },
+        "windValue": {
+          "name": "Wind speed",
+          "name@de": "Windgeschwindigkeit",
+          "type": "select",
+          "default": "gust",
+          "options": [
+            {
+              "key": "gust",
+              "name": "Gusts (recommended for wind alarm)",
+              "name@de": "Böen (empfohlen für Windalarm)"
+            },
+            {
+              "key": "average",
+              "name": "Average",
+              "name@de": "Mittelwert"
+            }
+          ]
+        },
+        "rainHold": {
+          "name": "Keep rain alarm for (min)",
+          "name@de": "Regenalarm halten für (min)",
+          "type": "number",
+          "min": 0,
+          "max": 180,
+          "default": 20,
+          "description": "Rain gauges report light rain only now and then. The rain alarm stays on for this time after the last rain was measured.",
+          "description@de": "Regenmesser melden leichten Regen nur ab und zu. Der Regenalarm bleibt so lange nach dem zuletzt gemessenen Regen aktiv."
+        },
+        "publicRadius": {
+          "name": "Radius for the weather map (km)",
+          "name@de": "Umkreis für die Wetterkarte (km)",
+          "type": "number",
+          "min": 1,
+          "max": 25,
+          "default": 5,
+          "description": "Only public stations within this distance of your station are used.",
+          "description@de": "Nur öffentliche Stationen in diesem Abstand zur eigenen Station werden verwendet."
+        },
+        "rainMinStations": {
+          "name": "Rain: required public rain gauges",
+          "name@de": "Regen: nötige öffentliche Regenmesser",
+          "type": "number",
+          "min": 1,
+          "max": 5,
+          "default": 2,
+          "description": "With the weather map, rain is reported when at least this many of the nearest five rain gauges measure rain (fewer if there are fewer stations). Protects against single faulty stations.",
+          "description@de": "Mit der Wetterkarte wird Regen gemeldet, wenn mindestens so viele der fünf nächsten Regenmesser Regen messen (weniger, wenn es weniger Stationen gibt). Schützt vor einzelnen fehlerhaften Stationen."
+        },
+        "latitude": {
+          "name": "Latitude (optional)",
+          "name@de": "Breitengrad (optional)",
+          "type": "string",
+          "description": "Location for the weather map and the brightness, e.g. 50.1109. Empty: location of the Netatmo station.",
+          "description@de": "Standort für Wetterkarte und Helligkeit, z. B. 50.1109. Leer: Standort der Netatmo-Station."
+        },
+        "longitude": {
+          "name": "Longitude (optional)",
+          "name@de": "Längengrad (optional)",
+          "type": "string",
+          "description": "e.g. 8.6821. Empty: location of the Netatmo station.",
+          "description@de": "z. B. 8.6821. Leer: Standort der Netatmo-Station."
+        }
+      }
+    },
+    "advanced": {
+      "name": "Advanced",
+      "name@de": "Erweitert",
+      "items": {
+        "pollInterval": {
+          "name": "Maximum update interval (min)",
+          "name@de": "Maximaler Abfrageabstand (min)",
+          "type": "number",
+          "min": 2,
+          "max": 60,
+          "default": 10,
+          "description": "The station sends its values to the Netatmo cloud every 10 minutes. The addon fetches them shortly after, at the latest after this time.",
+          "description@de": "Die Station überträgt ihre Werte alle 10 Minuten an die Netatmo-Cloud. Das Addon holt sie kurz danach ab, spätestens nach dieser Zeit."
+        },
+        "debug": {
+          "name": "Debug logging",
+          "name@de": "Debug-Protokoll",
+          "type": "boolean",
+          "default": false,
+          "description": "Detailed messages in the log of the addon, e.g. every value sent to free@home and the stations used from the weather map.",
+          "description@de": "Ausführliche Meldungen im Protokoll des Addons, z. B. jeder an free@home gesendete Wert und die verwendeten Stationen der Wetterkarte."
+        }
+      }
+    }
+  }
+}

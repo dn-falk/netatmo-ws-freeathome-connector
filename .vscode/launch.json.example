@@ -1,0 +1,20 @@
+{
+    // Copy to launch.json and adjust the address and credentials of your System Access Point.
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "node",
+            "request": "launch",
+            "name": "Addon",
+            "skipFiles": ["<node_internals>/**"],
+            "program": "${workspaceFolder}/build/main.js",
+            "env": {
+                "FREEATHOME_BASE_URL": "http://192.168.1.2",
+                "FREEATHOME_API_USERNAME": "installer",
+                "FREEATHOME_API_PASSWORD": "12345"
+            },
+            "outFiles": ["${workspaceFolder}/build/**/*.js"],
+            "preLaunchTask": "npm: build"
+        }
+    ]
+}
