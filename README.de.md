@@ -2,7 +2,7 @@
 
 [English](README.md) | **Deutsch**
 
-free@home-Addon für den **System Access Point 2.0**, das eine **Netatmo Smarte Wetterstation** in
+free@home-Addon für den **System Access Point 2.0 und 3.0**, das eine **Netatmo Smarte Wetterstation** in
 free@home anzeigt: die Außenwerte als normale **free@home-Wetterstation** (Helligkeit, Regen,
 Temperatur, Wind) und die Basisstation und Innenmodule als **Sensoren** für Temperatur,
 Luftfeuchte, CO2 und Luftdruck.
@@ -84,7 +84,8 @@ erreichbar), wird bis zum nächsten Wert wolkenloser Himmel angenommen.
 
 ## Voraussetzungen
 
-- free@home **System Access Point 2.0** mit Firmware **3.0 oder neuer**, mit Internetzugang
+- free@home **System Access Point 2.0** (Firmware **3.0 oder neuer**) oder **System Access Point 3.0**,
+  mit Internetzugang
 - In der free@home-next-App: **Mehr → Installationseinstellungen → Local API** aktiviert
 - **Netatmo Smarte Wetterstation** (Basisstation, optional Außen-, Innen-, Regen- und Windmodul) und
   das Netatmo-Konto, auf das sie angemeldet ist
