@@ -72,8 +72,10 @@ weather service and converts it into illuminance (about 120 lx per W/m²):
 
 Between two queries the addon follows the position of the sun every minute (the cloudiness of the
 last query is applied to the current position of the sun), and in the twilight it uses typical
-twilight values. If the last value of the weather service is older than 45 minutes (service not
-reachable), the cloudless sky is assumed until a new value arrives.
+twilight values. If the last value of the weather service is older than 60 minutes (service not
+reachable), the cloudless sky is assumed until a new value arrives. Bright Sky often publishes the
+DWD values only every 30 minutes and with a delay; until a new value is there, the addon asks every
+5 minutes.
 
 > The value is an **approximation for a horizontal surface** and not a measurement at your house.
 > It is well suited for twilight and "sunny/not sunny"; for a façade-specific sun protection, choose

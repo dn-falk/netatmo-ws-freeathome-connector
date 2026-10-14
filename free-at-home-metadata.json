@@ -252,8 +252,8 @@
           "name@de": "Helligkeit",
           "type": "select",
           "default": "openmeteo",
-          "description": "Netatmo has no light sensor. The addon converts the solar radiation of a weather service into lux (horizontal surface, approximate value) and follows the position of the sun between two queries; in the twilight it uses typical twilight values. If the last value of the weather service is older than 45 minutes (service not reachable), a cloudless sky is assumed until a new value arrives.",
-          "description@de": "Netatmo hat keinen Lichtsensor. Das Addon rechnet die Sonneneinstrahlung eines Wetterdienstes in Lux um (waagerechte Fläche, Näherungswert) und führt den Wert zwischen zwei Abfragen mit dem Sonnenstand nach; in der Dämmerung verwendet es typische Dämmerungswerte. Ist der letzte Wert des Wetterdienstes älter als 45 Minuten (Dienst nicht erreichbar), wird bis zum nächsten Wert wolkenloser Himmel angenommen.",
+          "description": "Netatmo has no light sensor. The addon converts the solar radiation of a weather service into lux (horizontal surface, approximate value) and follows the position of the sun between two queries; in the twilight it uses typical twilight values. If the last value of the weather service is older than 60 minutes (service not reachable), a cloudless sky is assumed until a new value arrives.",
+          "description@de": "Netatmo hat keinen Lichtsensor. Das Addon rechnet die Sonneneinstrahlung eines Wetterdienstes in Lux um (waagerechte Fläche, Näherungswert) und führt den Wert zwischen zwei Abfragen mit dem Sonnenstand nach; in der Dämmerung verwendet es typische Dämmerungswerte. Ist der letzte Wert des Wetterdienstes älter als 60 Minuten (Dienst nicht erreichbar), wird bis zum nächsten Wert wolkenloser Himmel angenommen.",
           "options": [
             {
               "key": "openmeteo",

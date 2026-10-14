@@ -75,8 +75,10 @@ Wetterdienstes und rechnet sie in Beleuchtungsstärke um (etwa 120 lx pro W/m²)
 
 Zwischen zwei Abfragen führt das Addon den Wert jede Minute mit dem Sonnenstand nach (die Bewölkung
 der letzten Abfrage wird auf den aktuellen Sonnenstand übertragen), in der Dämmerung verwendet es
-typische Dämmerungswerte. Ist der letzte Wert des Wetterdienstes älter als 45 Minuten (Dienst nicht
-erreichbar), wird bis zum nächsten Wert wolkenloser Himmel angenommen.
+typische Dämmerungswerte. Ist der letzte Wert des Wetterdienstes älter als 60 Minuten (Dienst nicht
+erreichbar), wird bis zum nächsten Wert wolkenloser Himmel angenommen. Bright Sky veröffentlicht die
+DWD-Werte oft nur alle 30 Minuten und verzögert; bis ein neuer Wert da ist, fragt das Addon alle
+5 Minuten nach.
 
 > Der Wert ist ein **Näherungswert für eine waagerechte Fläche** und keine Messung am eigenen Haus.
 > Er eignet sich gut für Dämmerung und „sonnig/nicht sonnig“; für einen fassadengenauen Sonnenschutz

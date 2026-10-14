@@ -112,6 +112,17 @@ describe("BrightnessService", () => {
         assert.equal(fallback.lux, Math.round(clearSkyIlluminance(now, FRANKFURT)));
     });
 
+    it("asks a weather service that is behind again after half the interval, not every minute", async () => {
+        const provider = new FakeProvider(200);
+        const service = new BrightnessService(provider);
+        // The next value (15-minute period after the sample) would be due since 4 minutes.
+        const start = SUMMER_NOON + 20 * 60_000;
+        for (let minute = 0; minute < 30; minute++)
+            await service.update(start + minute * 60_000, FRANKFURT);
+        assert.equal(provider.calls, 4, "every 7.5 minutes");
+        assert.equal(service.current(start + 29 * 60_000, FRANKFURT).source, "openmeteo", "the sample is still used");
+    });
+
     it("only calculates without a weather service", () => {
         const state = new BrightnessService(undefined).current(SUMMER_NOON, FRANKFURT);
         assert.deepEqual(state, { lux: Math.round(clearSkyIlluminance(SUMMER_NOON, FRANKFURT)), source: "sun", fallback: false });

@@ -126,8 +126,11 @@ export function estimateIlluminance(now: number, location: Location, sample?: Ra
     return clearness * Math.max(clearSky * LUX_PER_WATT, twilight);
 }
 
-/** A sample is used this long; afterwards the cloudless sky is assumed until a new one arrives. */
-export const MAX_SAMPLE_AGE_MS = 45 * 60_000;
+/**
+ * A sample is used this long; afterwards the cloudless sky is assumed until a new one arrives.
+ * Bright Sky replaces a value of the DWD only after up to 45 minutes.
+ */
+export const MAX_SAMPLE_AGE_MS = 60 * 60_000;
 const RETRY_DELAYS_MS = [60_000, 2 * 60_000, 5 * 60_000];
 
 export interface BrightnessState {
@@ -178,9 +181,14 @@ export class BrightnessService {
             this.sample = sample;
             this.failures = 0;
             this.lastError = undefined;
-            // New values are published in fixed intervals; ask shortly after the next one.
+            // New values are published in fixed intervals; ask shortly after the next one. If it is
+            // overdue (Bright Sky publishes the DWD values often only every 30 minutes and late),
+            // ask again after half the interval instead of every minute.
             const periodEnd = sample.time + provider.refreshIntervalMs / 2;
-            this.nextFetch = Math.max(now + 60_000, Math.min(now + provider.refreshIntervalMs, periodEnd + provider.refreshIntervalMs + 60_000));
+            const expected = periodEnd + provider.refreshIntervalMs + 60_000;
+            this.nextFetch = expected > now
+                ? Math.max(now + 60_000, Math.min(now + provider.refreshIntervalMs, expected))
+                : now + provider.refreshIntervalMs / 2;
             this.log.debug(`${provider.name}: ${sample.irradiance.toFixed(0)} W/m² (${new Date(sample.time).toISOString()})`);
         } catch (error) {
             this.failures++;
