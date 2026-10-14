@@ -78,7 +78,7 @@ describe("weather station values", () => {
     });
 
     it("falls back to the weather map when an own module has no current values", () => {
-        const stale = station([{ ...outdoor, time: NOW - 45 * 60_000 }, { ...wind, reachable: false }]);
+        const stale = station([{ ...outdoor, time: NOW - 75 * 60_000 }, { ...wind, reachable: false }]);
         assert.deepEqual(publicKindsNeeded(stale, settings, NOW), ["temperature", "rain", "wind"]);
         const result = new StationWeather().compute(stale, publicData, settings, NOW);
         assert.equal(result.values.outdoorTemperature, 15);

@@ -58,7 +58,9 @@ describe("Netatmo station data", () => {
     it("treats unreachable modules and old values as not fresh", () => {
         const now = 1_700_000_000_000;
         assert.equal(isFresh({ id: "a", type: "NAModule1", name: "a", reachable: true, time: now - 60_000 }, now), true);
-        assert.equal(isFresh({ id: "a", type: "NAModule1", name: "a", reachable: true, time: now - 31 * 60_000 }, now), false);
+        assert.equal(isFresh({ id: "a", type: "NAModule1", name: "a", reachable: true, time: now - 40 * 60_000 }, now), true,
+            "Netatmo at times delivers the values 20 minutes late");
+        assert.equal(isFresh({ id: "a", type: "NAModule1", name: "a", reachable: true, time: now - 61 * 60_000 }, now), false);
         assert.equal(isFresh({ id: "a", type: "NAModule1", name: "a", reachable: false, time: now }, now), false);
         assert.equal(isFresh(undefined, now), false);
     });

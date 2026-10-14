@@ -43,7 +43,7 @@ thresholds you set for the channel in free@home.
 ### Missing modules: the public Netatmo weather map
 
 Many Netatmo stations share their values publicly (weather map at weathermap.netatmo.com). If your
-station has no rain or wind gauge, or a module does not send values for 30 minutes, the addon uses
+station has no rain or wind gauge, or a module does not send values for 60 minutes, the addon uses
 the stations of the map within the configured radius (default 5 km) around your station:
 
 - **Rain:** the five nearest rain gauges with current values. Rain is reported when at least
@@ -72,8 +72,10 @@ weather service and converts it into illuminance (about 120 lx per W/m²):
 
 Between two queries the addon follows the position of the sun every minute (the cloudiness of the
 last query is applied to the current position of the sun), and in the twilight it uses typical
-twilight values. If the last value of the weather service is older than 45 minutes (service not
-reachable), the cloudless sky is assumed until a new value arrives.
+twilight values. If the last value of the weather service is older than 60 minutes (service not
+reachable), the cloudless sky is assumed until a new value arrives. Bright Sky often publishes the
+DWD values only every 30 minutes and with a delay; until a new value is there, the addon asks every
+5 minutes.
 
 > The value is an **approximation for a horizontal surface** and not a measurement at your house.
 > It is well suited for twilight and "sunny/not sunny"; for a façade-specific sun protection, choose
@@ -144,7 +146,7 @@ be shown as **active**.
 | Radius for the weather map | km around the station (default 5) |
 | Rain: required public rain gauges | how many of the nearest five gauges must measure rain (default 2) |
 | Latitude/Longitude (optional) | location for weather map and brightness; empty: location of the Netatmo station |
-| Maximum update interval | the addon fetches the values shortly after every upload of the station, at the latest after this time (default 10 min) |
+| Maximum update interval | the addon fetches the values shortly after every upload of the station (it learns how long Netatmo takes to deliver them), at the latest after this time (default 10 min) |
 | Debug logging | detailed messages in the log, e.g. every value sent to free@home and the stations used from the weather map |
 
 After saving, the addon connects. **Status** shows e.g. "Connected, 1 station(s), 9 free@home
@@ -189,10 +191,10 @@ and link the actuators with the devices of the addon.
 | "The token lacks the scope read_station …" | Generate the token again with the scope `read_station` ticked. |
 | "Too many requests to Netatmo …" | Netatmo allows 500 requests per hour per app and user. The addon needs about 20–30 per hour; use a separate Netatmo app for the addon. The addon waits 15 minutes (longer if Netatmo asks for it) and tries again. |
 | "The Netatmo app was deactivated …" | Netatmo deactivated your app on dev.netatmo.com. Activate it again under **My apps**; the addon tries again every 30 minutes, or at once with **Reload stations**. |
-| "Netatmo not reachable" | No internet connection of the SysAP or Netatmo disturbance. The addon keeps trying; sensors whose values are older than 30 minutes are shown as "not reachable". |
+| "Netatmo not reachable" | No internet connection of the SysAP or Netatmo disturbance. The addon keeps trying; sensors whose values are older than 60 minutes are shown as "not reachable". |
 | Current data sources "Rain no data" | No rain gauge of your own and no public rain gauge within the radius: increase the radius. |
 | Brightness "calculated (weather service not available)" | Open-Meteo/Bright Sky not reachable, or (Bright Sky) no DWD station with radiation measurement nearby: choose Open-Meteo. |
-| Sensor "not reachable" | The Netatmo module has not sent values for 30 minutes (battery, radio range). The Netatmo app shows the same. The log warns when a module battery drops below 20 %. |
+| Sensor "not reachable" | The Netatmo module has not sent values for 60 minutes (battery, radio range) or Netatmo is disturbed. The Netatmo app shows the same. The log warns when a module battery drops below 20 %. At times Netatmo delivers the values 20 minutes or more after the measurement; the addon adapts its queries to this, the debug log shows the delay ("latest measurement … min old (Netatmo delay … min)"). |
 | "Log" tab in the addon settings stays empty | **Download** there provides the complete log as a file. |
 
 The addon writes its messages to the SysAP journal. In the addon settings, **Log → Download** saves
@@ -265,6 +267,7 @@ src/
   status.ts                status display (settings, application state)
   bridge/bridge.ts         query cycle: Netatmo, weather map, brightness -> free@home devices
   bridge/plan.ts           which free@home devices exist for the stations and settings
+  bridge/schedule.ts       when to query again: after the next upload, with the learned delay of Netatmo
   bridge/weather.ts        values of the weather station incl. fallback to the weather map and rain hold time
   fah/                     virtual free@home devices, datapoints and alarms, device registry
   netatmo/                 Netatmo API client, token renewal, station and weather map data

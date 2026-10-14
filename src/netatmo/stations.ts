@@ -134,8 +134,11 @@ export function allModules(station: StationData): ModuleData[] {
     return [station.main, ...station.modules];
 }
 
-/** Values older than this are not used (the station reports every 5–10 minutes). */
-export const STALE_AFTER_MS = 30 * 60_000;
+/**
+ * Values older than this are not used, and the sensors are shown as unreachable. The station
+ * reports every 10 minutes, but Netatmo at times delivers the values 20 minutes or more late.
+ */
+export const STALE_AFTER_MS = 60 * 60_000;
 
 /** True if the module is reachable and its last measurement is recent. */
 export function isFresh(module: ModuleData | undefined, now: number): module is ModuleData {
