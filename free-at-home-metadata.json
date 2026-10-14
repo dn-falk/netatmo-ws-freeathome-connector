@@ -8,7 +8,7 @@
     "en": "Shows a Netatmo Smart Home Weather Station in free@home: the outdoor values as a free@home weather station (temperature, wind, rain, brightness) and the indoor modules as sensors for temperature, humidity, CO2 and air pressure. Values the station cannot measure are taken from nearby stations of the public Netatmo weather map and from a weather service. Unofficial community addon, not affiliated with or endorsed by Netatmo/Legrand or ABB/Busch-Jaeger. Instructions, source code and support: https://github.com/dn-falk/netatmo-ws-freeathome-connector",
     "de": "Zeigt eine Netatmo Smarte Wetterstation in free@home an: die Außenwerte als free@home-Wetterstation (Temperatur, Wind, Regen, Helligkeit) und die Innenmodule als Sensoren für Temperatur, Luftfeuchte, CO2 und Luftdruck. Werte, die die Station nicht misst, kommen von Stationen der öffentlichen Netatmo-Wetterkarte in der Nähe und von einem Wetterdienst. Inoffizielles Community-Addon, ohne Verbindung zu Netatmo/Legrand oder ABB/Busch-Jaeger. Anleitung, Quellcode und Support: https://github.com/dn-falk/netatmo-ws-freeathome-connector"
   },
-  "version": "1.0.1",
+  "version": "1.0.2",
   "license": "MIT",
   "author": "Dennis Nikolas Falk",
   "url": "https://github.com/dn-falk/netatmo-ws-freeathome-connector",
@@ -155,8 +155,8 @@
           "name": "Data sources",
           "name@de": "Datenquellen",
           "type": "separator",
-          "description": "Values your station cannot measure are filled in. \"Automatic\" uses the module of your station; if there is none, or it has not sent values for 30 minutes, nearby stations of the public Netatmo weather map are used (radius below). Brightness comes from a weather service or from the position of the sun (see below).",
-          "description@de": "Werte, die die eigene Station nicht misst, werden ergänzt. „Automatisch“ nutzt das Modul der eigenen Station; gibt es keins oder sendet es 30 Minuten lang nichts, werden Stationen der öffentlichen Netatmo-Wetterkarte in der Nähe verwendet (Umkreis unten). Die Helligkeit kommt von einem Wetterdienst oder aus dem Sonnenstand (siehe unten)."
+          "description": "Values your station cannot measure are filled in. \"Automatic\" uses the module of your station; if there is none, or it has not sent values for 60 minutes, nearby stations of the public Netatmo weather map are used (radius below). Brightness comes from a weather service or from the position of the sun (see below).",
+          "description@de": "Werte, die die eigene Station nicht misst, werden ergänzt. „Automatisch“ nutzt das Modul der eigenen Station; gibt es keins oder sendet es 60 Minuten lang nichts, werden Stationen der öffentlichen Netatmo-Wetterkarte in der Nähe verwendet (Umkreis unten). Die Helligkeit kommt von einem Wetterdienst oder aus dem Sonnenstand (siehe unten)."
         },
         "temperatureSource": {
           "name": "Outdoor temperature",
@@ -354,8 +354,8 @@
           "min": 2,
           "max": 60,
           "default": 10,
-          "description": "The station sends its values to the Netatmo cloud every 10 minutes. The addon fetches them shortly after, at the latest after this time.",
-          "description@de": "Die Station überträgt ihre Werte alle 10 Minuten an die Netatmo-Cloud. Das Addon holt sie kurz danach ab, spätestens nach dieser Zeit."
+          "description": "The station sends its values to the Netatmo cloud every 10 minutes. The addon fetches them as soon as Netatmo delivers them (at times only 20 minutes or more after the measurement), at the latest after this time.",
+          "description@de": "Die Station überträgt ihre Werte alle 10 Minuten an die Netatmo-Cloud. Das Addon holt sie ab, sobald Netatmo sie ausliefert (zeitweise erst 20 Minuten oder mehr nach der Messung), spätestens nach dieser Zeit."
         },
         "debug": {
           "name": "Debug logging",

@@ -13,6 +13,7 @@ import { PublicDataKind } from "../netatmo/types";
 import { BrightnessService, BrightnessState, BrightSkyProvider, OpenMeteoProvider, RadiationProvider } from "../weather/brightness";
 import { describeStationSources } from "../status";
 import { PlanSettings, PlannedDevice, planDevices } from "./plan";
+import { PollSchedule } from "./schedule";
 import { PublicSnapshot, SourceInfo, StationWeather, WeatherSettings, publicKindsNeeded } from "./weather";
 
 export interface BridgeSettings {
@@ -83,10 +84,6 @@ interface CachedPublicData {
     fetchedAt: number;
 }
 
-/** The cloud gets new values from the station every 10 minutes. */
-const UPLOAD_INTERVAL_MS = 10 * 60_000;
-/** Wait after the expected upload before asking (the cloud needs a moment). */
-const UPLOAD_DELAY_MS = 30_000;
 const PUBLIC_REFRESH_MS = 9 * 60_000;
 const RETRY_DELAYS_MS = [30_000, 60_000, 2 * 60_000, 5 * 60_000, 10 * 60_000];
 const AUTH_RETRY_DELAY_MS = 30 * 60_000;
@@ -126,6 +123,7 @@ export class Bridge extends EventEmitter {
     private readonly brightness = new Map<string, BrightnessService>();
     private readonly publicData = new Map<string, Partial<Record<PublicDataKind, CachedPublicData>>>();
     private readonly lowBattery = new Set<string>();
+    private readonly schedule: PollSchedule;
     private stations: StationData[] = [];
     private plannedDevices = 0;
     /** Netatmo stations with a free@home weather station in the settings. */
@@ -154,6 +152,7 @@ export class Bridge extends EventEmitter {
             onRefreshToken: (token) => deps.onRefreshToken(token),
             now: this.now,
         }, this.log.child("token"));
+        this.schedule = new PollSchedule(deps.minPollIntervalMs ?? 60_000, settings.maxPollIntervalMs);
     }
 
     get status(): BridgeStatus {
@@ -252,16 +251,14 @@ export class Bridge extends EventEmitter {
     /** Wait until shortly after the next expected upload of the stations. */
     private nextPollDelay(stations: StationData[]): number {
         const now = this.now();
-        const minimum = this.deps.minPollIntervalMs ?? 60_000;
-        const maximum = Math.max(minimum, this.settings.maxPollIntervalMs);
         const times = stations.map((station) => station.main.time).filter((time): time is number => time !== undefined);
-        if (times.length === 0)
-            return maximum;
-        const latest = Math.max(...times);
-        if (now - latest > 2 * UPLOAD_INTERVAL_MS)
-            return maximum; // station offline, no upload expected soon
-        const expected = latest + UPLOAD_INTERVAL_MS + UPLOAD_DELAY_MS;
-        return Math.min(maximum, Math.max(minimum, expected - now));
+        const latest = times.length > 0 ? Math.max(...times) : undefined;
+        const delay = this.schedule.next(latest, now);
+        if (latest !== undefined) {
+            this.log.debug(`latest measurement ${minutes(now - latest)} min old (Netatmo delay ${minutes(this.schedule.deliveryDelayMs)} min),`
+                + ` next query in ${minutes(delay)} min`);
+        }
+        return delay;
     }
 
     private handleError(error: unknown): number {
@@ -528,6 +525,10 @@ export class Bridge extends EventEmitter {
             };
         });
     }
+}
+
+function minutes(ms: number): string {
+    return (ms / 60_000).toFixed(1);
 }
 
 /** Values of a module that a free@home sensor shows. */

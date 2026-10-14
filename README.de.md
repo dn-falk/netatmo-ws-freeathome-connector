@@ -44,7 +44,7 @@ anbietet) verwenden die Schwellen, die in free@home für den Kanal eingestellt s
 ### Fehlende Module: die öffentliche Netatmo-Wetterkarte
 
 Viele Netatmo-Stationen teilen ihre Werte öffentlich (Wetterkarte auf weathermap.netatmo.com). Hat
-die eigene Station keinen Regen- oder Windmesser, oder sendet ein Modul 30 Minuten lang keine Werte,
+die eigene Station keinen Regen- oder Windmesser, oder sendet ein Modul 60 Minuten lang keine Werte,
 nutzt das Addon die Stationen der Karte im eingestellten Umkreis (Standard 5 km) um die eigene
 Station:
 
@@ -149,7 +149,7 @@ muss als **aktiv** angezeigt werden.
 | Umkreis für die Wetterkarte | km um die Station (Standard 5) |
 | Regen: nötige öffentliche Regenmesser | wie viele der fünf nächsten Messer Regen messen müssen (Standard 2) |
 | Breiten-/Längengrad (optional) | Standort für Wetterkarte und Helligkeit; leer: Standort der Netatmo-Station |
-| Maximaler Abfrageabstand | das Addon holt die Werte kurz nach jeder Übertragung der Station ab, spätestens nach dieser Zeit (Standard 10 min) |
+| Maximaler Abfrageabstand | das Addon holt die Werte kurz nach jeder Übertragung der Station ab (es lernt, wie lange Netatmo für die Auslieferung braucht), spätestens nach dieser Zeit (Standard 10 min) |
 | Debug-Protokoll | ausführliche Meldungen im Protokoll, z. B. jeder an free@home gesendete Wert und die verwendeten Stationen der Wetterkarte |
 
 Nach dem Speichern verbindet sich das Addon. **Status** zeigt z. B. „Verbunden, 1 Station(en),
@@ -198,10 +198,10 @@ free@home löschen und die Aktoren mit den Geräten des Addons verknüpfen.
 | „Dem Token fehlt der Scope read_station …“ | Den Token neu erzeugen und dabei `read_station` anhaken. |
 | „Zu viele Anfragen an Netatmo …“ | Netatmo erlaubt 500 Anfragen pro Stunde je App und Benutzer. Das Addon braucht etwa 20–30 pro Stunde; für das Addon eine eigene Netatmo-App verwenden. Das Addon wartet 15 Minuten (länger, wenn Netatmo das verlangt) und versucht es erneut. |
 | „Die Netatmo-App wurde deaktiviert …“ | Netatmo hat die eigene App auf dev.netatmo.com deaktiviert. Unter **My apps** wieder aktivieren; das Addon versucht es alle 30 Minuten erneut, sofort mit **Stationen neu einlesen**. |
-| „Netatmo nicht erreichbar“ | Keine Internetverbindung des SysAP oder Störung bei Netatmo. Das Addon versucht es weiter; Sensoren, deren Werte älter als 30 Minuten sind, werden als „nicht erreichbar“ angezeigt. |
+| „Netatmo nicht erreichbar“ | Keine Internetverbindung des SysAP oder Störung bei Netatmo. Das Addon versucht es weiter; Sensoren, deren Werte älter als 60 Minuten sind, werden als „nicht erreichbar“ angezeigt. |
 | Aktuelle Datenquellen „Regen keine Daten“ | Kein eigener Regenmesser und kein öffentlicher Regenmesser im Umkreis: Umkreis vergrößern. |
 | Helligkeit „berechnet (Wetterdienst nicht erreichbar)“ | Open-Meteo/Bright Sky nicht erreichbar oder (Bright Sky) keine DWD-Station mit Strahlungsmessung in der Nähe: Open-Meteo wählen. |
-| Sensor „nicht erreichbar“ | Das Netatmo-Modul hat seit 30 Minuten keine Werte gesendet (Batterie, Funkreichweite). Die Netatmo-App zeigt dasselbe. Das Protokoll warnt, wenn eine Modulbatterie unter 20 % fällt. |
+| Sensor „nicht erreichbar“ | Das Netatmo-Modul hat seit 60 Minuten keine Werte gesendet (Batterie, Funkreichweite) oder Netatmo ist gestört. Die Netatmo-App zeigt dasselbe. Das Protokoll warnt, wenn eine Modulbatterie unter 20 % fällt. Netatmo liefert die Werte zeitweise erst 20 Minuten oder mehr nach der Messung aus; das Addon passt seine Abfragen daran an, das Debug-Protokoll zeigt die Verzögerung („latest measurement … min old (Netatmo delay … min)“). |
 | Reiter „Log“ in den Addon-Einstellungen bleibt leer | Dort über **Herunterladen** das vollständige Protokoll als Datei holen. |
 
 Das Addon schreibt seine Meldungen in das Journal des SysAP. In den Addon-Einstellungen speichert
@@ -277,6 +277,7 @@ src/
   status.ts                Statusanzeige (Einstellungen, Anwendungsstatus)
   bridge/bridge.ts         Abfragezyklus: Netatmo, Wetterkarte, Helligkeit -> free@home-Geräte
   bridge/plan.ts           welche free@home-Geräte es für Stationen und Einstellungen gibt
+  bridge/schedule.ts       wann wieder abgefragt wird: nach der nächsten Übertragung, mit der gelernten Verzögerung von Netatmo
   bridge/weather.ts        Werte der Wetterstation inkl. Rückgriff auf die Wetterkarte und Haltezeit des Regenalarms
   fah/                     virtuelle free@home-Geräte, Datenpunkte und Alarme, Geräteverwaltung
   netatmo/                 Client der Netatmo-API, Token-Erneuerung, Daten von Station und Wetterkarte
