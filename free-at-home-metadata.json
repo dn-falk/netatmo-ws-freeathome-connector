@@ -8,7 +8,7 @@
     "en": "Shows a Netatmo Smart Home Weather Station in free@home: the outdoor values as a free@home weather station (temperature, wind, rain, brightness) and the indoor modules as sensors for temperature, humidity, CO2 and air pressure. Values the station cannot measure are taken from nearby stations of the public Netatmo weather map and from a weather service. Unofficial community addon, not affiliated with or endorsed by Netatmo/Legrand or ABB/Busch-Jaeger. Instructions, source code and support: https://github.com/dn-falk/netatmo-ws-freeathome-connector",
     "de": "Zeigt eine Netatmo Smarte Wetterstation in free@home an: die Außenwerte als free@home-Wetterstation (Temperatur, Wind, Regen, Helligkeit) und die Innenmodule als Sensoren für Temperatur, Luftfeuchte, CO2 und Luftdruck. Werte, die die Station nicht misst, kommen von Stationen der öffentlichen Netatmo-Wetterkarte in der Nähe und von einem Wetterdienst. Inoffizielles Community-Addon, ohne Verbindung zu Netatmo/Legrand oder ABB/Busch-Jaeger. Anleitung, Quellcode und Support: https://github.com/dn-falk/netatmo-ws-freeathome-connector"
   },
-  "version": "1.0.2",
+  "version": "1.1.0",
   "license": "MIT",
   "author": "Dennis Nikolas Falk",
   "url": "https://github.com/dn-falk/netatmo-ws-freeathome-connector",
@@ -17,7 +17,10 @@
   "entryPoint": "build/main.js",
   "minSysapVersion": "3.0.0",
   "accessControl": {
-    "networkAccess": true
+    "networkAccess": true,
+    "networkPorts": [
+      8765
+    ]
   },
   "parameters": {
     "netatmo": {
@@ -343,6 +346,38 @@
         }
       }
     },
+    "webhook": {
+      "name": "Webhook (optional)",
+      "name@de": "Webhook (optional)",
+      "items": {
+        "webhookIntroduction": {
+          "name": "Receive the values by webhook",
+          "name@de": "Werte per Webhook empfangen",
+          "type": "separator",
+          "description": "Instead of asking Netatmo regularly, the addon can have the values sent by Netatmo within seconds (webhook); Netatmo plans to lower the number of allowed queries from March 2027. Netatmo has to reach the addon from the internet for this: forward a public address (preferably HTTPS through a reverse proxy) to port 8765 of the System Access Point. The addon registers the address with Netatmo itself and checks the signature of every webhook. Without a webhook, or as long as none arrive, the addon queries Netatmo as before.",
+          "description@de": "Statt Netatmo regelmäßig abzufragen, kann sich das Addon die Werte innerhalb von Sekunden von Netatmo schicken lassen (Webhook); Netatmo will die Zahl der erlaubten Abfragen ab März 2027 senken. Netatmo muss das Addon dafür aus dem Internet erreichen: eine öffentliche Adresse (am besten HTTPS über einen Reverse Proxy) auf Port 8765 des System Access Point weiterleiten. Das Addon meldet die Adresse selbst bei Netatmo an und prüft die Signatur jedes Webhooks. Ohne Webhook, oder solange keine ankommen, fragt das Addon Netatmo wie bisher ab."
+        },
+        "webhookUrl": {
+          "name": "Public webhook URL",
+          "name@de": "Öffentliche Webhook-URL",
+          "type": "string",
+          "description": "Address under which Netatmo reaches port 8765 of the System Access Point from the internet, e.g. https://netatmo.example.com/. Empty: no webhook.",
+          "description@de": "Adresse, unter der Netatmo den Port 8765 des System Access Point aus dem Internet erreicht, z. B. https://netatmo.example.com/. Leer: kein Webhook."
+        },
+        "webhookStatus": {
+          "name": "Webhook status",
+          "name@de": "Webhook-Status",
+          "type": "text",
+          "rpc": "getParameterConfig",
+          "rpcCallOn": "initial"
+        },
+        "registeredUrl": {
+          "name": "Registered webhook",
+          "name@de": "Angemeldeter Webhook",
+          "type": "hidden"
+        }
+      }
+    },
     "advanced": {
       "name": "Advanced",
       "name@de": "Erweitert",
@@ -354,8 +389,8 @@
           "min": 2,
           "max": 60,
           "default": 10,
-          "description": "The station sends its values to the Netatmo cloud every 10 minutes. The addon fetches them as soon as Netatmo delivers them (at times only 20 minutes or more after the measurement), at the latest after this time.",
-          "description@de": "Die Station überträgt ihre Werte alle 10 Minuten an die Netatmo-Cloud. Das Addon holt sie ab, sobald Netatmo sie ausliefert (zeitweise erst 20 Minuten oder mehr nach der Messung), spätestens nach dieser Zeit."
+          "description": "The station sends its values to the Netatmo cloud every 10 minutes. The addon fetches them as soon as Netatmo delivers them (at times only 20 minutes or more after the measurement), at the latest after this time. While webhooks bring the values, the station data is only queried once per hour.",
+          "description@de": "Die Station überträgt ihre Werte alle 10 Minuten an die Netatmo-Cloud. Das Addon holt sie ab, sobald Netatmo sie ausliefert (zeitweise erst 20 Minuten oder mehr nach der Messung), spätestens nach dieser Zeit. Solange Webhooks die Werte bringen, werden die Stationsdaten nur noch stündlich abgefragt."
         },
         "debug": {
           "name": "Debug logging",

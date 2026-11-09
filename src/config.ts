@@ -28,6 +28,10 @@ export interface Settings {
     rainMinStations: number;
     location?: { latitude: number; longitude: number };
     maxPollIntervalMs: number;
+    /** Public URL for the webhooks of Netatmo; undefined: the values are only queried. */
+    webhookUrl?: string;
+    /** URL the addon registered with Netatmo (hidden parameter written by the addon itself). */
+    registeredWebhookUrl?: string;
     debug: boolean;
 }
 
@@ -53,6 +57,8 @@ export interface TokenState {
 
 export const TOKEN_GROUP = "netatmo";
 export const TOKEN_STATE_ITEM = "tokenState";
+export const WEBHOOK_GROUP = "webhook";
+export const WEBHOOK_REGISTERED_ITEM = "registeredUrl";
 
 const SOURCE_MODES: readonly SourceMode[] = ["auto", "own", "public", "off"];
 const BRIGHTNESS_SOURCES: readonly BrightnessSource[] = ["openmeteo", "brightsky", "sun", "off"];
@@ -129,6 +135,18 @@ export function normaliseName(name: string): string {
     return name.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
+/** Checks the webhook URL: undefined if empty, null if invalid. */
+export function parseWebhookUrl(text: string | undefined): string | undefined | null {
+    if (!text)
+        return undefined;
+    try {
+        const url = new URL(text);
+        return (url.protocol === "https:" || url.protocol === "http:") && url.hostname !== "" ? url.href : null;
+    } catch {
+        return null;
+    }
+}
+
 function parseCoordinate(text: string | undefined, limit: number): number | undefined | null {
     if (!text)
         return undefined;
@@ -142,6 +160,7 @@ export function parseConfiguration(configuration: unknown): ConfigResult {
     const devices = groupItems(configuration, "devices");
     const weather = groupItems(configuration, "weather");
     const advanced = groupItems(configuration, "advanced");
+    const webhook = groupItems(configuration, WEBHOOK_GROUP);
     const problems: Message[] = [];
 
     const clientId = stringValue(netatmo.clientId);
@@ -162,6 +181,9 @@ export function parseConfiguration(configuration: unknown): ConfigResult {
         problems.push({ en: "invalid longitude", de: "ungültiger Längengrad" });
     if ((latitude === undefined) !== (longitude === undefined) && latitude !== null && longitude !== null)
         problems.push({ en: "enter both latitude and longitude", de: "Breiten- und Längengrad angeben" });
+    const webhookUrl = parseWebhookUrl(stringValue(webhook.webhookUrl));
+    if (webhookUrl === null)
+        problems.push({ en: "invalid webhook URL (e.g. https://netatmo.example.com/)", de: "ungültige Webhook-URL (z. B. https://netatmo.example.com/)" });
 
     if (problems.length > 0 || !clientId || !clientSecret || !enteredToken)
         return { ok: false, problems };
@@ -192,6 +214,8 @@ export function parseConfiguration(configuration: unknown): ConfigResult {
             location: latitude !== undefined && latitude !== null && longitude !== undefined && longitude !== null
                 ? { latitude, longitude } : undefined,
             maxPollIntervalMs: Math.round(numberValue(advanced.pollInterval, 10, 2, 60) * 60_000),
+            webhookUrl: webhookUrl ?? undefined,
+            registeredWebhookUrl: stringValue(webhook[WEBHOOK_REGISTERED_ITEM]),
             debug: booleanValue(advanced.debug, false),
         },
     };
@@ -199,26 +223,36 @@ export function parseConfiguration(configuration: unknown): ConfigResult {
 
 /**
  * Key that decides whether a new configuration needs a restart of the connection. The stored
- * token is not part of it: the addon writes it itself after every renewal.
+ * token and the registered webhook URL are not part of it: the addon writes them itself.
  */
 export function restartKey(result: ConfigResult): string {
     if (!result.ok)
         return JSON.stringify(result);
-    const { refreshToken: _ignored, ...rest } = result.settings;
+    const { refreshToken: _token, registeredWebhookUrl: _webhook, ...rest } = result.settings;
     return JSON.stringify(rest);
+}
+
+/** Returns a copy of the configuration with one item replaced (an empty string clears it). */
+export function withItem(configuration: unknown, groupName: string, item: string, value: string): Record<string, unknown> {
+    const copy = configuration && typeof configuration === "object"
+        ? JSON.parse(JSON.stringify(configuration)) as Record<string, unknown>
+        : {};
+    const group = copy[groupName] && typeof copy[groupName] === "object"
+        ? copy[groupName] as Record<string, unknown>
+        : {};
+    const items = group.items && typeof group.items === "object" ? group.items as Record<string, unknown> : {};
+    items[item] = value;
+    group.items = items;
+    copy[groupName] = group;
+    return copy;
 }
 
 /** Returns a copy of the configuration with the stored token replaced. */
 export function withTokenState(configuration: unknown, state: TokenState): Record<string, unknown> {
-    const copy = configuration && typeof configuration === "object"
-        ? JSON.parse(JSON.stringify(configuration)) as Record<string, unknown>
-        : {};
-    const group = copy[TOKEN_GROUP] && typeof copy[TOKEN_GROUP] === "object"
-        ? copy[TOKEN_GROUP] as Record<string, unknown>
-        : {};
-    const items = group.items && typeof group.items === "object" ? group.items as Record<string, unknown> : {};
-    items[TOKEN_STATE_ITEM] = JSON.stringify(state);
-    group.items = items;
-    copy[TOKEN_GROUP] = group;
-    return copy;
+    return withItem(configuration, TOKEN_GROUP, TOKEN_STATE_ITEM, JSON.stringify(state));
+}
+
+/** Returns a copy of the configuration with the webhook URL registered by the addon. */
+export function withRegisteredWebhook(configuration: unknown, url: string | undefined): Record<string, unknown> {
+    return withItem(configuration, WEBHOOK_GROUP, WEBHOOK_REGISTERED_ITEM, url ?? "");
 }

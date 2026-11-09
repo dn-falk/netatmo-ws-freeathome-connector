@@ -20,7 +20,8 @@ humidity, CO2 and air pressure.
 - **Indoor climate:** base station and additional indoor modules as free@home sensors (temperature,
   humidity, CO2, air pressure).
 - **Up to date:** the station sends its values to the Netatmo cloud every 10 minutes; the addon
-  fetches them about 30 seconds later.
+  fetches them about 30 seconds later. Optionally Netatmo sends them itself by **webhook**, within
+  seconds and with far fewer queries (see [Webhook](#6-webhook-optional)).
 - **Configured entirely in the addon settings** of the free@home app or the SysAP web interface. No
   Node-RED and no manually created virtual devices needed.
 
@@ -88,6 +89,8 @@ DWD values only every 30 minutes and with a delay; until a new value is there, t
 - In the free@home next app: **More → Installation settings → Local API** enabled
 - **Netatmo Smart Home Weather Station** (base station, optionally outdoor, indoor, rain and wind
   modules) and the Netatmo account it is registered with
+- Optional, for the [webhook](#6-webhook-optional): a public address (reverse proxy or port
+  forwarding) to port 8765 of the System Access Point
 
 ## Installation
 
@@ -146,8 +149,9 @@ be shown as **active**.
 | Radius for the weather map | km around the station (default 5) |
 | Rain: required public rain gauges | how many of the nearest five gauges must measure rain (default 2) |
 | Latitude/Longitude (optional) | location for weather map and brightness; empty: location of the Netatmo station |
-| Maximum update interval | the addon fetches the values shortly after every upload of the station (it learns how long Netatmo takes to deliver them), at the latest after this time (default 10 min) |
-| Debug logging | detailed messages in the log, e.g. every value sent to free@home and the stations used from the weather map |
+| Public webhook URL (optional) | address under which Netatmo reaches port 8765 of the System Access Point, see [Webhook](#6-webhook-optional); empty: no webhook (default) |
+| Maximum update interval | the addon fetches the values shortly after every upload of the station (it learns how long Netatmo takes to deliver them), at the latest after this time (default 10 min); while webhooks bring the values, only once per hour |
+| Debug logging | detailed messages in the log, e.g. every value sent to free@home, every webhook and the stations used from the weather map |
 
 After saving, the addon connects. **Status** shows e.g. "Connected, 1 station(s), 9 free@home
 device(s)", **Current data sources** e.g. "Temperature outdoor module · Rain weather map (0/5 gauges
@@ -182,6 +186,64 @@ as "not reachable"; delete them in free@home.
 **Coming from Node-RED:** stop the Node-RED flow, delete the virtual devices it created in free@home
 and link the actuators with the devices of the addon.
 
+### 6. Webhook (optional)
+
+Without a webhook the addon asks Netatmo for the station data regularly (polling), as before.
+Netatmo now also offers **webhooks**: Netatmo sends the values itself, typically within seconds of
+the measurement. Netatmo plans to lower the rate limits for polling from **1 March 2027** and
+recommends webhooks. With an active webhook the addon queries the station data only **once per
+hour** (names, batteries, new modules) instead of every 10 minutes. The public weather map and the
+weather services are not covered by webhooks; the addon keeps asking them as before, and only for
+what your station does not measure.
+
+**Requirement: Netatmo has to reach the addon from the internet.** The addon receives the webhooks
+on **port 8765** of the System Access Point. Make a public address lead there, for example:
+
+- **Reverse proxy with HTTPS** (recommended), e.g. on a NAS, a server or a router with a domain:
+  `https://netatmo.example.com/` → `http://<SysAP-IP>:8765/`. If possible, let it pass on only
+  `POST` requests.
+- **Port forwarding in the router**: an external port → `<SysAP-IP>:8765`, URL
+  `http://<public address or DynDNS name>:<port>/`. Netatmo's documentation does not say whether it
+  accepts plain `http`; its examples use `https`.
+
+Forward only this port, never the web interface of the System Access Point. Check the forwarding from
+outside (e.g. mobile network): the URL in a browser shows "Netatmo-Weather-Connector for free@home:
+webhook endpoint".
+
+**Set up:** enter the address under **Webhook (optional) → Public webhook URL** and save. The addon
+registers it with Netatmo itself for your Netatmo user (Webhooks API); nothing has to be set on
+dev.netatmo.com. When you change or clear the address, the addon replaces or removes the address it
+registered; other webhooks of the Netatmo app stay untouched. **Webhook status** shows e.g.
+"Active, last webhook 2 min ago; the station data is only queried once per hour".
+
+**Security:** the addon accepts only webhooks signed by Netatmo (HMAC-SHA256 of the content with the
+client secret of your app) and rejects everything else. The endpoint can do nothing but receive
+webhooks.
+
+**When devices are shown as "not reachable"** – the rules stay the same with and without webhook:
+
+- A free@home device becomes "not reachable" when the values of its Netatmo module are **older than
+  60 minutes**, or when the **station data** reports the module as not reachable.
+- If a webhook reports a module as not reachable, the addon reads the station data right away
+  (at most every 10 minutes) and follows it. Netatmo does not guarantee the order of the webhooks,
+  so a webhook alone does not switch a device off.
+- If the webhooks stop (internet, forwarding, or Netatmo suspends the address for a while after
+  errors – webhooks of that time are lost), the addon goes back to the regular queries as soon as a
+  module has had no webhook for **15 minutes**. A failing webhook therefore does not make devices
+  "not reachable"; the values are then just up to about 15 minutes older for a moment.
+- Modules that the webhooks do not (or not always) contain keep the regular queries running.
+
+**Note:** the webhooks of Netatmo for weather stations are new (November 2026) and only briefly
+documented. The addon reads the values under the names of the webhooks (e.g. `pressure_sea`,
+`windspeed`, `gustspeed`) and assumes the units of the rest of the Netatmo API (°C, %, ppm, hPa,
+km/h, mm); implausible values are ignored. With **Debug logging** the log shows every value of a
+webhook ("webhook: Garten temperature 12.5, humidity 80"), so you can compare them with the Netatmo
+app once. The addon declares port 8765 in its metadata for the System Access Point; if the System
+Access Point does not allow the addon to open it, **Webhook status** says so and the addon keeps
+querying. The webhook support is tested against a simulated Netatmo cloud and System Access Point;
+reports from real installations are welcome in the
+[issues](https://github.com/dn-falk/netatmo-ws-freeathome-connector/issues).
+
 ## Troubleshooting
 
 | Status / symptom | Cause and solution |
@@ -195,6 +257,10 @@ and link the actuators with the devices of the addon.
 | Current data sources "Rain no data" | No rain gauge of your own and no public rain gauge within the radius: increase the radius. |
 | Brightness "calculated (weather service not available)" | Open-Meteo/Bright Sky not reachable, or (Bright Sky) no DWD station with radiation measurement nearby: choose Open-Meteo. |
 | Sensor "not reachable" | The Netatmo module has not sent values for 60 minutes (battery, radio range) or Netatmo is disturbed. The Netatmo app shows the same. The log warns when a module battery drops below 20 %. At times Netatmo delivers the values 20 minutes or more after the measurement; the addon adapts its queries to this, the debug log shows the delay ("latest measurement … min old (Netatmo delay … min)"). |
+| Webhook status "Port 8765 could not be opened …" | The System Access Point does not let the addon open the port. The addon keeps querying Netatmo; clear the webhook URL. |
+| Webhook status "Netatmo does not allow webhooks for this app (HTTP 403)" | Netatmo has not enabled the Webhooks API for your app (yet). The addon keeps querying and tries again every hour. |
+| Webhook status "Registered with Netatmo, no webhook received yet …" | Netatmo cannot reach the address: check the reverse proxy or port forwarding to port 8765 from outside (see [Webhook](#6-webhook-optional)). |
+| Webhook status "… without a valid signature" | Requests arrive, but not signed with the client secret of the app: check the client secret in the settings. |
 | "Log" tab in the addon settings stays empty | **Download** there provides the complete log as a file. |
 
 The addon writes its messages to the SysAP journal. In the addon settings, **Log → Download** saves
@@ -204,7 +270,8 @@ turn on **Debug logging** in the settings.
 ## Limitations
 
 - **Delay:** the station sends its values every 10 minutes, the public stations too. A rain alarm
-  therefore comes up to about 10 minutes later than with a heated rain sensor. For awnings that must
+  therefore comes up to about 10 minutes later than with a heated rain sensor (with a webhook
+  somewhat earlier, as the values arrive within seconds of the measurement). For awnings that must
   retract at the first drop, a dedicated rain sensor remains the safer choice.
 - **Brightness** is an approximation from weather service data, see [Brightness](#brightness).
 - Values free@home has no datapoint for are not transferred: noise level, rain amounts (mm), wind
@@ -244,6 +311,9 @@ cloud (station "Zuhause" with outdoor and indoor module, public stations with ra
 weather service. Then start the addon with
 `NETATMO_API_URL=http://localhost:18080 OPEN_METEO_URL=http://localhost:18080 BRIGHT_SKY_URL=http://localhost:18080 npm start`
 and enter client ID `client-id`, client secret `client-secret` and refresh token `refresh-0`.
+With the webhook URL `http://localhost:8765/` the simulated cloud sends a signed webhook every
+60 seconds (`--webhook-interval <s>`, 0: none); `NETATMO_WEBHOOK_PORT` changes the local port of
+the addon.
 
 ### Releases
 
@@ -268,9 +338,12 @@ src/
   bridge/bridge.ts         query cycle: Netatmo, weather map, brightness -> free@home devices
   bridge/plan.ts           which free@home devices exist for the stations and settings
   bridge/schedule.ts       when to query again: after the next upload, with the learned delay of Netatmo
+  bridge/live.ts           values of the webhooks over the station data, which modules they cover
+  bridge/webhook.ts        webhook endpoint and its registration with Netatmo
   bridge/weather.ts        values of the weather station incl. fallback to the weather map and rain hold time
   fah/                     virtual free@home devices, datapoints and alarms, device registry
-  netatmo/                 Netatmo API client, token renewal, station and weather map data
+  netatmo/                 Netatmo API client, token renewal, station and weather map data, webhook payloads
+  webhookServer.ts         receives the webhooks (signature check)
   weather/                 brightness: weather services, position of the sun, twilight
 test/                      tests incl. Netatmo simulator and fake System Access Point
 tools/mock-netatmo.ts      simulated Netatmo cloud for development
@@ -289,8 +362,8 @@ tools/mock-netatmo.ts      simulated Netatmo cloud for development
   products the addon works with. This implies no affiliation with the trademark owners and no
   endorsement by them. No manufacturer logos are used.
 - **Interfaces and data:** The addon only uses officially documented interfaces: the Netatmo Connect
-  Weather API with your own app and token, the Local API and addon interface of the free@home System
-  Access Point, and the public APIs of the weather services.
+  Weather API and Webhooks API with your own app and token, the Local API and addon interface of the
+  free@home System Access Point, and the public APIs of the weather services.
   Weather data by [Open-Meteo.com](https://open-meteo.com/) (CC BY 4.0). Source of the DWD data:
   Deutscher Wetterdienst, via [Bright Sky](https://brightsky.dev/).
 - **License and liability:** MIT license, see [LICENSE](LICENSE). The software is provided without

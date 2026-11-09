@@ -2,6 +2,8 @@ import * as http from "node:http";
 import { AddressInfo } from "node:net";
 
 import { RawModule, RawPublicStation, RawStation } from "../../src/netatmo/types";
+import { parseJson } from "../../src/http";
+import { SIGNATURE_HEADER, webhookSignature } from "../../src/netatmo/webhook";
 
 export interface SimulatedModule {
     id: string;
@@ -56,6 +58,12 @@ export interface RecordedRequest {
     query: Record<string, string>;
     authorization?: string;
     form?: Record<string, string>;
+    json?: unknown;
+}
+
+export interface DeliveredWebhook {
+    status: number;
+    body: string;
 }
 
 /**
@@ -75,6 +83,10 @@ export class NetatmoSimulator {
     weatherServiceDown = false;
     /** Every answer is delayed by this many milliseconds (a slow cloud). */
     responseDelayMs = 0;
+    /** Webhook URLs registered for the user (Webhooks API). */
+    webhooks: string[] = [];
+    /** Answer requests to the Webhooks API with this HTTP status (e.g. 403: app not allowed). */
+    webhooksFailWith: number | undefined;
     private validRefreshTokens = new Set<string>();
     private validAccessTokens = new Set<string>();
     private tokenCounter = 0;
@@ -146,6 +158,7 @@ export class NetatmoSimulator {
                 authorization: req.headers.authorization,
                 form: req.headers["content-type"]?.startsWith("application/x-www-form-urlencoded")
                     ? Object.fromEntries(new URLSearchParams(body)) : undefined,
+                json: req.headers["content-type"]?.startsWith("application/json") ? parseJson(body) : undefined,
             };
             this.requests.push(request);
             this.log(`${request.method} ${url.pathname}${url.search}`);
@@ -163,6 +176,8 @@ export class NetatmoSimulator {
             switch (url.pathname) {
                 case "/oauth2/token":
                     return this.token(request, json);
+                case "/webhooks/v1/":
+                    return this.webhooksApi(request, json);
                 case "/api/getstationsdata":
                 case "/api/getpublicdata": {
                     const token = request.authorization?.replace(/^Bearer /, "");
@@ -216,6 +231,107 @@ export class NetatmoSimulator {
         json(200, { access_token: accessToken, refresh_token: refreshToken, expires_in: this.tokenLifetime, expire_in: this.tokenLifetime, scope: ["read_station"] });
     }
 
+    /** Webhooks API: GET lists, POST adds one, PUT replaces all, DELETE removes all webhooks of the user. */
+    private webhooksApi(request: RecordedRequest, json: (status: number, payload: unknown) => void): void {
+        const token = request.authorization?.replace(/^Bearer /, "");
+        if (!token || !this.validAccessTokens.has(token))
+            return json(401, { error: { code: 3, message: "Access token expired" } });
+        if (this.webhooksFailWith !== undefined)
+            return json(this.webhooksFailWith, { error: { code: 13, message: "This application is not authorized to use the Webhooks API" } });
+        const urls = (value: unknown): string[] | undefined => {
+            const entries = Array.isArray(value) ? value : value ? [value] : [];
+            const result = entries.map((entry) => (entry as { url?: unknown }).url);
+            return result.every((url) => typeof url === "string" && /^https?:\/\//.test(url)) ? result as string[] : undefined;
+        };
+        switch (request.method) {
+            case "GET":
+                break;
+            case "POST": {
+                const added = urls(request.json);
+                if (!added || added.length !== 1)
+                    return json(400, { error: { code: 21, message: "Invalid request body or URL" } });
+                if (!this.webhooks.includes(added[0]))
+                    this.webhooks.push(added[0]);
+                break;
+            }
+            case "PUT": {
+                const replaced = urls(request.json);
+                if (!replaced || !Array.isArray(request.json))
+                    return json(400, { error: { code: 21, message: "Invalid request body or URL format" } });
+                this.webhooks = [...new Set(replaced)];
+                break;
+            }
+            case "DELETE":
+                this.webhooks = [];
+                break;
+            default:
+                return json(405, { error: { code: 21, message: "method not allowed" } });
+        }
+        json(200, { status: "ok", time_server: Math.round(Date.now() / 1000), body: this.webhooks.map((url) => ({ url })) });
+    }
+
+    /**
+     * Sends a webhook like Netatmo: POST with the body signed with the client secret. `target`
+     * replaces the registered URL (the tests cannot use a public address).
+     */
+    async sendWebhook(target: string, payload: unknown, options: { secret?: string; signature?: string } = {}): Promise<DeliveredWebhook> {
+        const body = JSON.stringify(payload);
+        const signature = options.signature ?? webhookSignature(body, options.secret ?? this.clientSecret);
+        return new Promise<DeliveredWebhook>((resolve, reject) => {
+            const req = http.request(target, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(body), [SIGNATURE_HEADER]: signature },
+                agent: false,
+            }, (res) => {
+                const chunks: Buffer[] = [];
+                res.on("data", (chunk: Buffer) => chunks.push(chunk));
+                res.on("end", () => resolve({ status: res.statusCode ?? 0, body: Buffer.concat(chunks).toString("utf8") }));
+            });
+            req.on("error", reject);
+            req.end(body);
+        });
+    }
+
+    /**
+     * A device event of a station as the new webhooks send it: the measurements of all modules
+     * (names of the webhooks, e.g. "pressure_sea", "gustspeed") with the time they were last seen.
+     * The webhooks come right after the measurement (`age`, default 5 s), long before the station
+     * data of the cloud has it.
+     */
+    deviceEvent(station: SimulatedStation = this.stations[0], options: { now?: number; age?: number } = {}): Record<string, unknown> {
+        const now = options.now ?? Date.now() / 1000;
+        const age = options.age ?? 5;
+        const modules: Record<string, unknown>[] = [{
+            id: station.id,
+            type: "NAMain",
+            ...webhookValues(station.values),
+            wifi_status: 56,
+            firmware: 300,
+            last_seen: Math.round(now - age),
+        }];
+        for (const module of station.modules) {
+            modules.push({
+                id: module.id,
+                type: module.type,
+                ...(module.reachable === false ? { reachable: false } : webhookValues(module.values)),
+                battery_vp: 5800,
+                rf_status: 70,
+                last_seen: Math.round(now - (module.reachable === false ? 3_600 : age)),
+            });
+        }
+        this.sequence++;
+        return {
+            push_type: "device_event",
+            user_id: "5c810xxxxxxxxxxxxxxxxxxx",
+            device_id: station.id,
+            home_id: "5c811xxxxxxxxxxxxxxxxxxx",
+            home_name: station.name,
+            extra_params: { correlation_id: this.sequence * 7, sequence_id: this.sequence, source: "netcom", modules },
+        };
+    }
+
+    private sequence = 1000;
+
     private publicData(query: Record<string, string>, now: number): RawPublicStation[] {
         const latNE = Number(query.lat_ne);
         const lonNE = Number(query.lon_ne);
@@ -231,6 +347,16 @@ export class NetatmoSimulator {
                 || (required === "temperature" && station.temperature !== undefined))
             .map((station) => rawPublicStation(station, now));
     }
+}
+
+/** Values of /getstationsdata under the names of the webhooks. */
+function webhookValues(values: Record<string, number>): Record<string, number> {
+    const names: Record<string, string> = {
+        Temperature: "temperature", Humidity: "humidity", CO2: "co2", Noise: "noise_current",
+        Pressure: "pressure_sea", AbsolutePressure: "pressure_abs", WindStrength: "windspeed", WindAngle: "windangle",
+        GustStrength: "gustspeed", GustAngle: "gustangle", Rain: "rain", sum_rain_1: "sum_rain_1", sum_rain_24: "sum_rain_24",
+    };
+    return Object.fromEntries(Object.entries(values).map(([key, value]) => [names[key] ?? key, value]));
 }
 
 export function defaultStation(): SimulatedStation {

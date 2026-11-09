@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { ChildProcess, spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { createServer } from "node:net";
 import { join, resolve } from "node:path";
 import { after, before, describe, it } from "node:test";
 
@@ -17,6 +18,18 @@ const ADDON_ID = (JSON.parse(readFileSync(join(ROOT, "free-at-home-metadata.json
 
 const WS = "netatmo-ws-70ee50000001";
 
+/** A local port that is free right now. */
+function freePort(): Promise<number> {
+    return new Promise((resolve, reject) => {
+        const server = createServer();
+        server.on("error", reject);
+        server.listen(0, "127.0.0.1", () => {
+            const port = (server.address() as { port: number }).port;
+            server.close(() => resolve(port));
+        });
+    });
+}
+
 /**
  * Runs the compiled addon (with the real @busch-jaeger/free-at-home library) as separate
  * process against a fake System Access Point and the simulated Netatmo cloud.
@@ -28,6 +41,7 @@ describe("addon process (real free@home library, fake System Access Point)", () 
     let addon: ChildProcess;
     let output = "";
     let exitCode: number | null | undefined;
+    let webhookPort = 0;
 
     const configuration = (refreshToken: string) => ({
         netatmo: { items: { clientId: simulator.clientId, clientSecret: simulator.clientSecret, refreshToken } },
@@ -47,6 +61,7 @@ describe("addon process (real free@home library, fake System Access Point)", () 
                 FREEATHOME_API_PASSWORD: "12345",
                 NETATMO_API_URL: simulator.url,
                 OPEN_METEO_URL: simulator.url,
+                NETATMO_WEBHOOK_PORT: String(webhookPort),
             },
             stdio: ["ignore", "pipe", "pipe"],
         });
@@ -70,6 +85,7 @@ describe("addon process (real free@home library, fake System Access Point)", () 
             ],
         });
         await simulator.listen();
+        webhookPort = await freePort();
         sysap = new FakeSysap(ADDON_ID);
         baseUrl = await sysap.listen();
         sysap.setConfiguration(configuration(simulator.initialRefreshToken));
@@ -184,6 +200,25 @@ describe("addon process (real free@home library, fake System Access Point)", () 
         } finally {
             simulator.responseDelayMs = 0;
         }
+    });
+
+    it("receives the values by webhook once a webhook URL is set", async () => {
+        const url = "https://netatmo.example.com/hook";
+        const saved = sysap.savedConfigurations.at(-1) as Record<string, unknown>;
+        sysap.setConfiguration({ ...saved, webhook: { items: { webhookUrl: url } } });
+        await check(() => simulator.webhooks.includes(url), "webhook registered with Netatmo");
+        await check(() => sysap.savedConfigurations.some((entry) =>
+            (entry as { webhook?: { items: Record<string, unknown> } }).webhook?.items.registeredUrl === url), "registered URL stored");
+        const waiting = await sysap.rpc("getParameterConfig", { $parameter: "webhookStatus", $group: "webhook" }) as Record<string, string>;
+        assert.match(waiting["name@de"], /Bei Netatmo angemeldet, noch kein Webhook empfangen/);
+
+        const station = { ...defaultStation(), values: { ...defaultStation().values, CO2: 640 } };
+        const delivered = await simulator.sendWebhook(`http://127.0.0.1:${webhookPort}/hook`, simulator.deviceEvent(station));
+        assert.equal(delivered.status, 200);
+        await check(() => sysap.output("netatmo-70ee50000001-co2", PairingId.AL_INFO_CO_2) === "640", "value of the webhook");
+        const active = await sysap.rpc("getParameterConfig", { $parameter: "webhookStatus", $group: "webhook" }) as Record<string, string>;
+        assert.match(active["name@de"], /^Aktiv, letzter Webhook vor weniger als einer Minute/);
+        assert.equal((await simulator.sendWebhook(`http://127.0.0.1:${webhookPort}/hook`, simulator.deviceEvent(), { secret: "wrong" })).status, 401);
     });
 
     it("shows a rejected token in the status and shuts down cleanly", async () => {

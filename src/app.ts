@@ -5,16 +5,26 @@ import {
     TOKEN_GROUP,
     TOKEN_STATE_ITEM,
     TokenState,
+    WEBHOOK_GROUP,
+    WEBHOOK_REGISTERED_ITEM,
     groupItems,
     parseConfiguration,
     parseTokenState,
     restartKey,
+    withRegisteredWebhook,
     withTokenState,
 } from "./config";
 import { Logger, errorMessage } from "./log";
+import { WEBHOOK_PORT } from "./netatmo/webhook";
 import { AddonStatus, fromBridgeStatus } from "./status";
 
 const MAX_REWRITES = 3;
+
+function withItemsCopy(configuration: unknown): Record<string, unknown> {
+    return configuration && typeof configuration === "object"
+        ? JSON.parse(JSON.stringify(configuration)) as Record<string, unknown>
+        : {};
+}
 
 export interface DeviceRegistry extends DeviceProvider {
     setAllAvailable(available: boolean): Promise<void>;
@@ -26,7 +36,19 @@ export interface AppDependencies {
     publishStatus(status: AddonStatus): void;
     /** Writes the addon configuration (used to store the refresh token). */
     saveConfiguration(configuration: Record<string, unknown>): Promise<unknown>;
-    createBridge?(settings: BridgeSettings, deps: { devices: DeviceProvider; onRefreshToken(token: string): void }): Bridge;
+    createBridge?(settings: BridgeSettings, deps: BridgeCallbacks): Bridge;
+}
+
+export interface BridgeCallbacks {
+    devices: DeviceProvider;
+    onRefreshToken(token: string): void;
+    onWebhookRegistered(url: string | undefined): void;
+}
+
+/** Local port of the webhook endpoint; NETATMO_WEBHOOK_PORT overrides it for development and tests. */
+export function webhookPort(env = process.env): number {
+    const port = Number(env.NETATMO_WEBHOOK_PORT);
+    return env.NETATMO_WEBHOOK_PORT && Number.isInteger(port) && port >= 0 && port <= 65_535 ? port : WEBHOOK_PORT;
 }
 
 export function toBridgeSettings(settings: Settings): BridgeSettings {
@@ -53,6 +75,8 @@ export function toBridgeSettings(settings: Settings): BridgeSettings {
         publicRadiusKm: settings.publicRadiusKm,
         location: settings.location,
         maxPollIntervalMs: settings.maxPollIntervalMs,
+        webhook: settings.webhookUrl ? { url: settings.webhookUrl, port: webhookPort() } : undefined,
+        registeredWebhookUrl: settings.registeredWebhookUrl,
     };
 }
 
@@ -72,6 +96,8 @@ export class App {
     private saving: Promise<void> = Promise.resolve();
     /** Times the current token state was written again because the configuration lacked it. */
     private rewrites = 0;
+    /** Webhook URL registered by the addon, once a bridge reported it (newer than the configuration). */
+    private registeredWebhook: { url: string | undefined } | undefined;
     private readonly statusListeners = new Set<(status: AddonStatus) => void>();
     private readonly log = new Logger("app");
 
@@ -154,14 +180,19 @@ export class App {
         // (settings saved in the app with the state loaded before a renewal): the newest one wins.
         if (this.tokenState?.origin !== origin)
             this.tokenState = { origin, refreshToken: result.settings.refreshToken };
-        const settings = toBridgeSettings({ ...result.settings, refreshToken: this.tokenState.refreshToken });
-        const bridgeDeps = {
+        const settings = toBridgeSettings({
+            ...result.settings,
+            refreshToken: this.tokenState.refreshToken,
+            registeredWebhookUrl: this.registeredWebhook ? this.registeredWebhook.url : result.settings.registeredWebhookUrl,
+        });
+        const bridgeDeps: BridgeCallbacks = {
             devices: this.deps.registry,
             // Also from a bridge that is being stopped: its token is the newest one then.
             onRefreshToken: (token: string) => {
                 if (this.tokenState?.origin === origin)
                     this.storeToken({ origin, refreshToken: token });
             },
+            onWebhookRegistered: (url) => this.storeWebhook(url),
         };
         const bridge = this.deps.createBridge
             ? this.deps.createBridge(settings, bridgeDeps)
@@ -178,20 +209,31 @@ export class App {
     /**
      * Writes the token back if the configuration does not contain the current one, e.g. because
      * the settings were saved in the app with the token state loaded before the last renewal.
+     * The same for the webhook URL registered by the addon.
      */
     private checkStoredToken(configuration: unknown): void {
         if (!this.tokenState)
             return;
         const stored = parseTokenState(groupItems(configuration, TOKEN_GROUP)[TOKEN_STATE_ITEM]);
-        if (stored?.origin === this.tokenState.origin && stored.refreshToken === this.tokenState.refreshToken)
+        const storedWebhook = groupItems(configuration, WEBHOOK_GROUP)[WEBHOOK_REGISTERED_ITEM];
+        const webhookStored = !this.registeredWebhook || (storedWebhook || undefined) === this.registeredWebhook.url;
+        if (stored?.origin === this.tokenState.origin && stored.refreshToken === this.tokenState.refreshToken && webhookStored)
             return;
         // Never more than a few times, so that the addon and the System Access Point cannot
         // send the configuration back and forth endlessly.
         if (this.rewrites >= MAX_REWRITES)
             return;
         this.rewrites++;
-        this.log.info("the configuration does not contain the current refresh token, storing it again");
+        this.log.info("the configuration does not contain the current refresh token or webhook, storing them again");
         this.storeToken(this.tokenState, false);
+    }
+
+    /** The configuration with the values the addon stores itself. */
+    private withStoredValues(configuration: unknown): Record<string, unknown> {
+        let result = this.tokenState ? withTokenState(configuration, this.tokenState) : withItemsCopy(configuration);
+        if (this.registeredWebhook)
+            result = withRegisteredWebhook(result, this.registeredWebhook.url);
+        return result;
     }
 
     private storeToken(state: TokenState, isNew = true): void {
@@ -200,13 +242,25 @@ export class App {
         this.tokenState = state;
         this.saving = this.saving
             .then(async () => {
-                const configuration = withTokenState(this.configuration, state);
+                const configuration = this.withStoredValues(this.configuration);
                 this.configuration = configuration;
                 await this.deps.saveConfiguration(configuration);
                 this.log.info("refresh token stored in the addon configuration");
             })
             .catch((error) => this.log.error(`could not store the refresh token: ${errorMessage(error)}`
                 + " - if the addon restarts now, a new token may have to be generated"));
+    }
+
+    /** Remembers the webhook URL registered by the addon, so it can be replaced or removed later. */
+    private storeWebhook(url: string | undefined): void {
+        this.registeredWebhook = { url };
+        this.saving = this.saving
+            .then(async () => {
+                const configuration = this.withStoredValues(this.configuration);
+                this.configuration = configuration;
+                await this.deps.saveConfiguration(configuration);
+            })
+            .catch((error) => this.log.error(`could not store the registered webhook: ${errorMessage(error)}`));
     }
 
     private async stopBridge(): Promise<void> {

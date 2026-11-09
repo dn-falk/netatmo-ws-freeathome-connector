@@ -15,9 +15,22 @@ export interface NetatmoApi {
     refreshToken(credentials: ClientCredentials, refreshToken: string): Promise<TokenResponse>;
     getStationsData(accessToken: string): Promise<StationsDataBody>;
     getPublicData(accessToken: string, box: BoundingBox, kind: PublicDataKind): Promise<RawPublicStation[]>;
+    /** URLs of the webhooks registered for the user of the token (Webhooks API). */
+    getWebhooks(accessToken: string): Promise<string[]>;
+    addWebhook(accessToken: string, url: string): Promise<void>;
+    /** Replaces all webhooks of the user. */
+    replaceWebhooks(accessToken: string, urls: string[]): Promise<void>;
+    /** Removes all webhooks of the user. */
+    deleteWebhooks(accessToken: string): Promise<void>;
 }
 
+const WEBHOOKS_PATH = "/webhooks/v1/";
+
 const TIMEOUT_MS = 20_000;
+
+interface WebhookEntry {
+    url?: unknown;
+}
 
 /** HTTPS client for the Netatmo cloud (OAuth2 token endpoint and Weather API). */
 export class NetatmoClient implements NetatmoApi {
@@ -60,6 +73,34 @@ export class NetatmoClient implements NetatmoApi {
         return Array.isArray(body) ? body : [];
     }
 
+    async getWebhooks(accessToken: string): Promise<string[]> {
+        const body = await this.webhooks("GET", accessToken);
+        return (Array.isArray(body) ? body : [])
+            .map((entry) => entry && typeof entry === "object" ? (entry as WebhookEntry).url : undefined)
+            .filter((url): url is string => typeof url === "string" && url !== "");
+    }
+
+    async addWebhook(accessToken: string, url: string): Promise<void> {
+        await this.webhooks("POST", accessToken, { url });
+    }
+
+    async replaceWebhooks(accessToken: string, urls: string[]): Promise<void> {
+        await this.webhooks("PUT", accessToken, urls.map((url) => ({ url })));
+    }
+
+    async deleteWebhooks(accessToken: string): Promise<void> {
+        await this.webhooks("DELETE", accessToken);
+    }
+
+    /** Request to the Webhooks API (JSON in both directions); returns the "body" of the answer. */
+    private async webhooks(method: "GET" | "POST" | "PUT" | "DELETE", accessToken: string, json?: unknown): Promise<unknown> {
+        const response = await this.send(method, WEBHOOKS_PATH, undefined, undefined, { Authorization: `Bearer ${accessToken}` }, json);
+        const body = parseJson(response.text);
+        if (response.status < 200 || response.status >= 300)
+            throw apiError(response.status, body, "webhooks", response.retryAfter);
+        return body && typeof body === "object" ? (body as { body?: unknown }).body : undefined;
+    }
+
     private async api<T>(path: string, accessToken: string, query: Record<string, string>): Promise<T | undefined> {
         const response = await this.send("GET", path, query, undefined, { Authorization: `Bearer ${accessToken}` });
         const body = parseJson(response.text);
@@ -70,14 +111,14 @@ export class NetatmoClient implements NetatmoApi {
         return (body as { body?: T }).body;
     }
 
-    private async send(method: "GET" | "POST", path: string, query?: Record<string, string>,
-        form?: Record<string, string>, headers?: Record<string, string>): Promise<HttpResponse> {
+    private async send(method: "GET" | "POST" | "PUT" | "DELETE", path: string, query?: Record<string, string>,
+        form?: Record<string, string>, headers?: Record<string, string>, json?: unknown): Promise<HttpResponse> {
         const url = new URL(this.baseUrl + path);
         for (const [key, value] of Object.entries(query ?? {}))
             url.searchParams.set(key, value);
         const started = Date.now();
         try {
-            const response = await httpRequest({ method, url, form, headers, timeoutMs: TIMEOUT_MS });
+            const response = await httpRequest({ method, url, form, json, headers, timeoutMs: TIMEOUT_MS });
             this.log.debug(`${method} ${path} -> ${response.status} (${Date.now() - started} ms, ${response.text.length} bytes)`);
             return response;
         } catch (error) {

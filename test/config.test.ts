@@ -1,11 +1,14 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
+import { webhookPort } from "../src/app";
 import {
     parseConfiguration,
     parseTokenState,
+    parseWebhookUrl,
     restartKey,
     tokenFingerprint,
+    withRegisteredWebhook,
     withTokenState,
 } from "../src/config";
 
@@ -15,6 +18,7 @@ function configuration(netatmo: Record<string, unknown>, others: Record<string, 
         devices: { items: others.devices ?? {} },
         weather: { items: others.weather ?? {} },
         advanced: { items: others.advanced ?? {} },
+        webhook: { items: others.webhook ?? {} },
     };
 }
 
@@ -52,6 +56,8 @@ describe("configuration", () => {
             rainMinStations: 2,
             location: undefined,
             maxPollIntervalMs: 10 * 60_000,
+            webhookUrl: undefined,
+            registeredWebhookUrl: undefined,
             debug: false,
         });
     });
@@ -101,6 +107,37 @@ describe("configuration", () => {
             assert.equal(invalid.problems.length, 2);
         const incomplete = parseConfiguration(configuration(credentials, { weather: { latitude: "50.1" } }));
         assert.equal(incomplete.ok, false);
+    });
+
+    it("reads the webhook URL and rejects an invalid one", () => {
+        const result = parseConfiguration(configuration(credentials, { webhook: { webhookUrl: " https://netatmo.example.com ", registeredUrl: "https://old.example.com/" } }));
+        assert.ok(result.ok);
+        assert.equal(result.settings.webhookUrl, "https://netatmo.example.com/");
+        assert.equal(result.settings.registeredWebhookUrl, "https://old.example.com/");
+        const invalid = parseConfiguration(configuration(credentials, { webhook: { webhookUrl: "netatmo.example.com" } }));
+        assert.equal(invalid.ok, false);
+        if (!invalid.ok)
+            assert.match(invalid.problems[0].de, /ungültige Webhook-URL/);
+        assert.equal(parseWebhookUrl("ftp://example.com/"), null);
+        assert.equal(parseWebhookUrl("http://192.168.1.2:8765/netatmo"), "http://192.168.1.2:8765/netatmo");
+        assert.equal(parseWebhookUrl(undefined), undefined);
+        assert.equal(webhookPort({}), 8765);
+        assert.equal(webhookPort({ NETATMO_WEBHOOK_PORT: "0" }), 0);
+        assert.equal(webhookPort({ NETATMO_WEBHOOK_PORT: "x" }), 8765);
+    });
+
+    it("does not restart for the webhook URL the addon stored, but for a new one", () => {
+        const plain = parseConfiguration(configuration(credentials, { webhook: { webhookUrl: "https://a.example.com/" } }));
+        const stored = parseConfiguration(configuration(credentials, { webhook: { webhookUrl: "https://a.example.com/", registeredUrl: "https://a.example.com/" } }));
+        const other = parseConfiguration(configuration(credentials, { webhook: { webhookUrl: "https://b.example.com/" } }));
+        assert.equal(restartKey(plain), restartKey(stored));
+        assert.notEqual(restartKey(plain), restartKey(other));
+        const copy = withRegisteredWebhook(configuration(credentials), "https://a.example.com/");
+        assert.deepEqual(copy.webhook, { items: { registeredUrl: "https://a.example.com/" } });
+        assert.deepEqual(withRegisteredWebhook(copy, undefined).webhook, { items: { registeredUrl: "" } });
+        const cleared = parseConfiguration(withRegisteredWebhook(copy, undefined));
+        assert.ok(cleared.ok);
+        assert.equal(cleared.settings.registeredWebhookUrl, undefined);
     });
 
     it("uses the stored refresh token only if it belongs to the entered one", () => {

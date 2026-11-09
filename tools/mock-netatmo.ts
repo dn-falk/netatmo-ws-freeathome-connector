@@ -6,6 +6,9 @@
  * The addon uses it when started with NETATMO_API_URL, OPEN_METEO_URL and BRIGHT_SKY_URL
  * pointing to it (see README, section "Development"). Client ID "client-id", client secret
  * "client-secret", refresh token "refresh-0".
+ *
+ * Webhook URLs the addon registers (e.g. http://localhost:8765/) get a signed device event of
+ * the station every `--webhook-interval` seconds (default 60, 0: none).
  */
 import { NetatmoSimulator } from "../test/support/netatmoSimulator";
 
@@ -28,6 +31,16 @@ async function main(): Promise<void> {
         log: (message) => console.log(`${new Date().toISOString()} ${message}`),
     });
     const url = await simulator.listen(port, "0.0.0.0");
+    const webhookInterval = Number(argument("webhook-interval", "60"));
+    if (webhookInterval > 0) {
+        setInterval(() => {
+            for (const target of simulator.webhooks) {
+                simulator.sendWebhook(target, simulator.deviceEvent())
+                    .then((result) => console.log(`${new Date().toISOString()} webhook to ${target}: HTTP ${result.status}`))
+                    .catch((error: Error) => console.log(`${new Date().toISOString()} webhook to ${target} failed: ${error.message}`));
+            }
+        }, webhookInterval * 1000);
+    }
     console.log(`Simulated Netatmo cloud listening on ${url}`);
     console.log(`Client ID: ${simulator.clientId}, client secret: ${simulator.clientSecret}, refresh token: ${simulator.initialRefreshToken}`);
     console.log("Station 'Zuhause' with outdoor module 'Garten' and indoor module 'Schlafzimmer'; rain and wind from the weather map.");

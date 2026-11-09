@@ -107,6 +107,41 @@ describe("App", () => {
         await restarted.app.shutdown();
     });
 
+    it("stores the webhook URL it registered, together with the token", async () => {
+        const { saved, bridges, simulator: sim } = await setup();
+        const config = {
+            ...configuration({ clientId: sim.clientId, clientSecret: sim.clientSecret, refreshToken: sim.initialRefreshToken }),
+            webhook: { items: { webhookUrl: "https://netatmo.example.com/hook" } },
+        };
+        const previous = process.env.NETATMO_WEBHOOK_PORT;
+        process.env.NETATMO_WEBHOOK_PORT = "0";
+        try {
+            await app?.applyConfiguration(config);
+        } finally {
+            if (previous === undefined)
+                delete process.env.NETATMO_WEBHOOK_PORT;
+            else
+                process.env.NETATMO_WEBHOOK_PORT = previous;
+        }
+        assert.deepEqual(bridges[0].webhook, { url: "https://netatmo.example.com/hook", port: 0 });
+        const registered = (entry: Record<string, unknown>) => (entry.webhook as { items: Record<string, unknown> } | undefined)?.items.registeredUrl;
+        await waitFor(() => saved.some((entry) => registered(entry) === "https://netatmo.example.com/hook"), 3_000, "stored webhook");
+        assert.deepEqual(sim.webhooks, ["https://netatmo.example.com/hook"]);
+        const last = saved.at(-1) as Record<string, unknown>;
+        assert.equal(registered(last), "https://netatmo.example.com/hook");
+        assert.equal(storedToken(last)?.refreshToken, "refresh-1", "the token is kept");
+
+        // The stored configuration comes back: no restart. Switched off: the URL is removed again.
+        await app?.applyConfiguration(last);
+        assert.equal(bridges.length, 1);
+        await app?.applyConfiguration({ ...last, webhook: { items: { webhookUrl: "", registeredUrl: "https://netatmo.example.com/hook" } } });
+        assert.equal(bridges.length, 2);
+        assert.equal(bridges[1].webhook, undefined);
+        assert.equal(bridges[1].registeredWebhookUrl, "https://netatmo.example.com/hook");
+        await waitFor(() => sim.webhooks.length === 0, 3_000, "webhook removed");
+        await waitFor(() => registered(saved.at(-1) as Record<string, unknown>) === "", 3_000, "removal stored");
+    });
+
     it("waits for the result of the connection when asked for the status", async () => {
         const { simulator: sim } = await setup();
         await app?.applyConfiguration(configuration({ clientId: sim.clientId, clientSecret: sim.clientSecret, refreshToken: sim.initialRefreshToken }));

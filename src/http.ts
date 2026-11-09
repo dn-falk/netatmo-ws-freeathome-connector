@@ -22,11 +22,13 @@ export interface HttpResponse {
 }
 
 export interface HttpRequest {
-    method: "GET" | "POST";
+    method: "GET" | "POST" | "PUT" | "DELETE";
     url: URL;
     headers?: Record<string, string>;
     /** Form fields, sent as application/x-www-form-urlencoded. */
     form?: Record<string, string>;
+    /** Sent as application/json (instead of `form`). */
+    json?: unknown;
     timeoutMs: number;
 }
 
@@ -39,14 +41,15 @@ const MAX_RESPONSE_BYTES = 4 * 1024 * 1024;
  */
 export function httpRequest(request: HttpRequest): Promise<HttpResponse> {
     return new Promise<HttpResponse>((resolve, reject) => {
-        const payload = request.form ? Buffer.from(new URLSearchParams(request.form).toString()) : undefined;
+        const payload = request.json !== undefined ? Buffer.from(JSON.stringify(request.json))
+            : request.form ? Buffer.from(new URLSearchParams(request.form).toString()) : undefined;
         const headers: http.OutgoingHttpHeaders = {
             Accept: "application/json",
             "User-Agent": "netatmo-ws-freeathome-connector",
             ...request.headers,
         };
         if (payload) {
-            headers["Content-Type"] = "application/x-www-form-urlencoded;charset=UTF-8";
+            headers["Content-Type"] = request.json !== undefined ? "application/json" : "application/x-www-form-urlencoded;charset=UTF-8";
             headers["Content-Length"] = payload.length;
         }
         const transport = request.url.protocol === "http:" ? http : https;

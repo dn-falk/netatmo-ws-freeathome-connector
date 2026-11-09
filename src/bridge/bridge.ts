@@ -7,13 +7,16 @@ import { Logger, errorMessage } from "../log";
 import { ClientCredentials, NETATMO_BASE_URL, NetatmoApi, NetatmoClient } from "../netatmo/client";
 import { NetatmoError } from "../netatmo/errors";
 import { boundingBox, parsePublicStations, PublicStation } from "../netatmo/publicData";
-import { Location, ModuleData, StationData, allModules, isFresh, parseStations } from "../netatmo/stations";
+import { Location, ModuleData, ModuleType, StationData, allModules, firstModule, isFresh, parseStations } from "../netatmo/stations";
 import { TokenManager } from "../netatmo/tokenManager";
 import { PublicDataKind } from "../netatmo/types";
+import { LiveValues, WebhookEvent, parseWebhookEvent } from "../netatmo/webhook";
 import { BrightnessService, BrightnessState, BrightSkyProvider, OpenMeteoProvider, RadiationProvider } from "../weather/brightness";
 import { describeStationSources } from "../status";
+import { LiveData } from "./live";
 import { PlanSettings, PlannedDevice, planDevices } from "./plan";
 import { PollSchedule } from "./schedule";
+import { WebhookService, WebhookSettings, WebhookStatus } from "./webhook";
 import { PublicSnapshot, SourceInfo, StationWeather, WeatherSettings, publicKindsNeeded } from "./weather";
 
 export interface BridgeSettings {
@@ -26,6 +29,10 @@ export interface BridgeSettings {
     /** Overrides the location of the stations (weather map, brightness). */
     location?: Location;
     maxPollIntervalMs: number;
+    /** Receive the values by webhook (undefined: only query them). */
+    webhook?: WebhookSettings;
+    /** Webhook URL the addon registered earlier (stored in the configuration). */
+    registeredWebhookUrl?: string;
 }
 
 export interface DeviceProvider {
@@ -48,6 +55,18 @@ export interface BridgeDependencies {
     retryDelaysMs?: number[];
     /** Shortest wait between two queries of the station data (default 1 min). */
     minPollIntervalMs?: number;
+    /** Called when the webhook URL registered by the addon changes (to be stored). */
+    onWebhookRegistered?(url: string | undefined): void;
+    /** A module counts as covered by webhooks while they brought its values within this time (default 15 min). */
+    webhookCoverageMs?: number;
+    /** Query of the station data while webhooks cover all modules (default 60 min). */
+    webhookPollIntervalMs?: number;
+    /** Shortest wait between two queries requested by webhooks (default 10 min). */
+    webhookTriggeredPollSpacingMs?: number;
+    /** The plan of the next request is checked at least this often (default 1 min). */
+    recheckIntervalMs?: number;
+    /** Age at which the weather map is read again (default 9 min). */
+    publicRefreshMs?: number;
 }
 
 export type BridgeState = "connecting" | "online" | "offline";
@@ -72,6 +91,8 @@ export interface BridgeStatus {
     plannedDevices: number;
     /** false until the first update after the start (devices, weather map, values) has finished */
     complete: boolean;
+    /** undefined if no webhook is configured */
+    webhook?: WebhookStatus;
 }
 
 interface ManagedDevice {
@@ -85,6 +106,15 @@ interface CachedPublicData {
 }
 
 const PUBLIC_REFRESH_MS = 9 * 60_000;
+/** Wait after a failed request to the weather map while webhooks make the station queries rare. */
+const PUBLIC_RETRY_MS = 5 * 60_000;
+/** 1.5 upload intervals: one late or missing webhook does not end the coverage. */
+const WEBHOOK_COVERAGE_MS = 15 * 60_000;
+/** Names, batteries and new modules are only in the station data. */
+const WEBHOOK_POLL_INTERVAL_MS = 60 * 60_000;
+const WEBHOOK_TRIGGERED_POLL_SPACING_MS = 10 * 60_000;
+const RECHECK_INTERVAL_MS = 60_000;
+const WEBHOOK_RECHECK_AFTER_DELETION_MS = 60_000;
 const RETRY_DELAYS_MS = [30_000, 60_000, 2 * 60_000, 5 * 60_000, 10 * 60_000];
 const AUTH_RETRY_DELAY_MS = 30 * 60_000;
 const RATE_LIMIT_DELAY_MS = 15 * 60_000;
@@ -108,10 +138,20 @@ function defaultRadiationProvider(source: BrightnessSource): RadiationProvider |
     }
 }
 
+/** Modules whose values the weather station uses (first outdoor, wind and rain module). */
+const WEATHER_MODULES: readonly ModuleType[] = ["NAModule1", "NAModule2", "NAModule3"];
+
 /**
  * Connects the Netatmo stations with virtual free@home devices: fetches the station data
  * shortly after every upload of the station, fills in missing values from the public weather
  * map and a weather service, and writes the values to the free@home devices.
+ *
+ * With a webhook, Netatmo sends the values itself within seconds. As long as the webhooks bring
+ * the values of all modules in use, the station data is only queried once an hour (names,
+ * batteries, new modules); as soon as a module is no longer covered, the regular queries take
+ * over again. Whether a device is reachable does not depend on the way the values arrive: it is
+ * shown as not reachable when its values are older than 60 minutes or Netatmo reports the module
+ * as not reachable in the station data.
  */
 export class Bridge extends EventEmitter {
     private readonly api: NetatmoApi;
@@ -124,7 +164,12 @@ export class Bridge extends EventEmitter {
     private readonly publicData = new Map<string, Partial<Record<PublicDataKind, CachedPublicData>>>();
     private readonly lowBattery = new Set<string>();
     private readonly schedule: PollSchedule;
+    private readonly live = new LiveData();
+    private readonly webhook: WebhookService;
+    /** Station data of the last query (without the values of the webhooks, see {@link currentStations}). */
     private stations: StationData[] = [];
+    /** Modules whose values the free@home devices use. */
+    private usedModules = new Set<string>();
     private plannedDevices = 0;
     /** Netatmo stations with a free@home weather station in the settings. */
     private weatherStationIds = new Set<string>();
@@ -136,6 +181,17 @@ export class Bridge extends EventEmitter {
     private lastEmitted = "";
     private running = false;
     private failures = 0;
+    private lastPollAt: number | undefined;
+    private lastPollFailed = false;
+    /** Next query according to the regular schedule (or the retry after an error). */
+    private nextScheduledPollAt = 0;
+    /** "Reload stations": query right away. */
+    private forcePoll = false;
+    /** A webhook asked for the station data (module not reachable, new module, changed home). */
+    private pollRequested = false;
+    private lastRequestedPollAt = Number.NEGATIVE_INFINITY;
+    /** No requests to the weather map outside the station queries before this time (after errors). */
+    private publicBlockedUntil = 0;
     private loopPromise: Promise<void> | undefined;
     private tickTimer: NodeJS.Timeout | undefined;
     private wake: (() => void) | undefined;
@@ -153,6 +209,17 @@ export class Bridge extends EventEmitter {
             now: this.now,
         }, this.log.child("token"));
         this.schedule = new PollSchedule(deps.minPollIntervalMs ?? 60_000, settings.maxPollIntervalMs);
+        this.webhook = new WebhookService({
+            settings: settings.webhook,
+            registeredUrl: settings.registeredWebhookUrl,
+            clientSecret: settings.credentials.clientSecret,
+            api: this.api,
+            withAccessToken: (request) => this.tokens.withAccessToken(request),
+            onEvent: (body) => this.onWebhook(body),
+            onRegistered: (url) => deps.onWebhookRegistered?.(url),
+            now: this.now,
+            log: this.log.child("webhook"),
+        });
     }
 
     get status(): BridgeStatus {
@@ -164,7 +231,13 @@ export class Bridge extends EventEmitter {
             sources: this.sources,
             plannedDevices: this.plannedDevices,
             complete: this.complete,
+            webhook: this.webhookStatus(this.now()),
         };
+    }
+
+    /** Port of the local webhook endpoint (undefined if it does not listen). */
+    get webhookPort(): number | undefined {
+        return this.webhook.port;
     }
 
     /** The refresh token currently in use (the latest one issued by Netatmo). */
@@ -178,6 +251,12 @@ export class Bridge extends EventEmitter {
         this.running = true;
         this.loopPromise = this.loop();
         this.tickTimer = setInterval(() => this.tick(), this.deps.tickIntervalMs ?? 60_000);
+        if (this.webhook.enabled) {
+            void this.webhook.start().then(() => {
+                if (this.state !== "connecting")
+                    this.emitStatus();
+            });
+        }
     }
 
     async stop(): Promise<void> {
@@ -185,13 +264,17 @@ export class Bridge extends EventEmitter {
         if (this.tickTimer)
             clearInterval(this.tickTimer);
         this.wake?.();
+        // The port has to be free for the next bridge (configuration changed).
+        const webhookStopped = this.webhook.stop();
         // Do not wait for a running request (up to its timeout); the loop ends after it anyway.
         await Promise.race([this.loopPromise, new Promise((resolve) => setTimeout(resolve, STOP_WAIT_MS).unref())]);
+        await webhookStopped;
         this.managed.clear();
     }
 
     /** Reads the station data again now (e.g. after modules were added in the Netatmo app). */
     resync(): void {
+        this.forcePoll = true;
         this.wake?.();
     }
 
@@ -201,24 +284,82 @@ export class Bridge extends EventEmitter {
             device.republish();
     }
 
+    /** One request after the other: station data, webhook registration, weather map. */
     private async loop(): Promise<void> {
         while (this.running) {
-            let delay: number;
-            try {
-                delay = await this.poll();
-                this.failures = 0;
-            } catch (error) {
-                if (!this.running)
-                    break;
-                delay = this.handleError(error);
+            const now = this.now();
+            const pollAt = this.pollDueAt(now);
+            if (pollAt <= now) {
+                await this.runPoll();
+                continue;
             }
-            this.emitStatus();
-            await this.sleep(delay);
+            const webhookAt = this.webhook.dueAt();
+            if (webhookAt <= now) {
+                await this.webhook.reconcile();
+                this.emitStatus();
+                continue;
+            }
+            const publicAt = this.publicDueAt(now);
+            if (publicAt <= now) {
+                await this.refreshPublicData();
+                continue;
+            }
+            // Webhooks can stop at any time: check the plan again regularly.
+            const recheck = this.deps.recheckIntervalMs ?? RECHECK_INTERVAL_MS;
+            await this.sleep(Math.max(1, Math.min(pollAt, webhookAt, publicAt, now + recheck) - now));
         }
+    }
+
+    private async runPoll(): Promise<void> {
+        const requested = this.pollRequested && !this.forcePoll && this.lastPollAt !== undefined;
+        this.forcePoll = false;
+        this.pollRequested = false;
+        try {
+            const delay = await this.poll();
+            this.failures = 0;
+            this.lastPollFailed = false;
+            this.nextScheduledPollAt = this.now() + delay;
+        } catch (error) {
+            if (!this.running)
+                return;
+            this.lastPollFailed = true;
+            this.nextScheduledPollAt = this.now() + this.handleError(error);
+        }
+        this.lastPollAt = this.now();
+        if (requested)
+            this.lastRequestedPollAt = this.lastPollAt;
+        if (!this.lastPollFailed && this.webhookActive(this.lastPollAt)) {
+            this.log.debug(`webhooks bring the values of all modules, next query of the station data in`
+                + ` ${minutes(this.pollDueAt(this.lastPollAt) - this.lastPollAt)} min`);
+        }
+        this.emitStatus();
+    }
+
+    /** When the station data is to be queried next. */
+    private pollDueAt(now: number): number {
+        if (this.forcePoll || this.lastPollAt === undefined)
+            return now;
+        if (this.lastPollFailed)
+            return this.nextScheduledPollAt;
+        let due = this.webhookActive(now)
+            ? this.lastPollAt + (this.deps.webhookPollIntervalMs ?? WEBHOOK_POLL_INTERVAL_MS)
+            : this.nextScheduledPollAt;
+        if (this.pollRequested) {
+            const spacing = this.deps.webhookTriggeredPollSpacingMs ?? WEBHOOK_TRIGGERED_POLL_SPACING_MS;
+            due = Math.min(due, Math.max(this.lastPollAt + (this.deps.minPollIntervalMs ?? 60_000), this.lastRequestedPollAt + spacing));
+        }
+        return due;
+    }
+
+    /** A webhook asks for the station data (rate limited, see {@link pollDueAt}). */
+    private requestPoll(): void {
+        this.pollRequested = true;
+        this.wake?.();
     }
 
     /** Fetches the station data and updates everything; returns the wait until the next poll. */
     private async poll(): Promise<number> {
+        const queriedAt = this.now();
         const body = await this.tokens.withAccessToken((token) => this.api.getStationsData(token));
         if (!this.running)
             return 0;
@@ -226,10 +367,13 @@ export class Bridge extends EventEmitter {
         const firstTime = this.state !== "online";
         const plan = planDevices(stations, this.settings.plan);
         this.stations = stations;
+        this.live.prune(stations, queriedAt);
         this.plannedDevices = plan.length;
         this.weatherStationIds = new Set(plan.filter((device) => device.type === "WeatherStation").map((device) => device.stationId));
+        this.usedModules = usedModules(stations, plan);
         this.state = "online";
         this.error = undefined;
+        this.webhook.activate();
         if (firstTime) {
             this.log.info(`connected to Netatmo: ${stations.length} station(s)`
                 + stations.map((station) => ` '${station.name}' (${allModules(station).map((module) => module.name).join(", ")})`).join(","));
@@ -238,7 +382,7 @@ export class Bridge extends EventEmitter {
         }
         this.checkBatteries(stations);
         // Weather map and weather service first: new devices get all their values right away.
-        await this.updatePublicData(stations);
+        await this.updatePublicData(this.currentStations());
         if (this.running)
             await this.updateBrightness();
         if (this.running)
@@ -367,7 +511,7 @@ export class Bridge extends EventEmitter {
                 if (!this.running)
                     return;
                 const cached = cache[kind];
-                if (cached && this.now() - cached.fetchedAt < PUBLIC_REFRESH_MS)
+                if (cached && this.now() - cached.fetchedAt < this.publicRefreshMs)
                     continue;
                 try {
                     const box = boundingBox(center, this.settings.publicRadiusKm);
@@ -378,15 +522,146 @@ export class Bridge extends EventEmitter {
                         + (nearby.length ? `, nearest ${nearby.slice(0, 5).map((entry) => `${entry.distanceKm.toFixed(1)} km`).join(", ")}` : ""));
                 } catch (error) {
                     this.log.warn(`could not read the public weather map (${kind}): ${errorMessage(error)}`);
-                    if (error instanceof NetatmoError && (error.kind === "rateLimit" || error.kind === "auth" || error.kind === "appDeactivated"))
+                    const kindOfError = error instanceof NetatmoError ? error.kind : undefined;
+                    this.publicBlockedUntil = this.now() + (kindOfError === "rateLimit" ? RATE_LIMIT_DELAY_MS : PUBLIC_RETRY_MS);
+                    if (kindOfError === "rateLimit" || kindOfError === "auth" || kindOfError === "appDeactivated")
                         return;
                 }
             }
         }
     }
 
+    private get publicRefreshMs(): number {
+        return this.deps.publicRefreshMs ?? PUBLIC_REFRESH_MS;
+    }
+
+    /**
+     * When the weather map is to be read without a query of the station data: only while
+     * webhooks make those queries rare (otherwise it is read with every query).
+     */
+    private publicDueAt(now: number): number {
+        if (this.lastPollFailed || !this.webhookActive(now))
+            return Number.POSITIVE_INFINITY;
+        let due = Number.POSITIVE_INFINITY;
+        for (const station of this.currentStations()) {
+            if (!this.hasWeatherStation(station) || !this.stationLocation(station))
+                continue;
+            const cache = this.publicData.get(station.id) ?? {};
+            for (const kind of publicKindsNeeded(station, this.settings.weather, now))
+                due = Math.min(due, (cache[kind]?.fetchedAt ?? Number.NEGATIVE_INFINITY) + this.publicRefreshMs);
+        }
+        return due === Number.POSITIVE_INFINITY ? due : Math.max(due, this.publicBlockedUntil);
+    }
+
+    private async refreshPublicData(): Promise<void> {
+        await this.updatePublicData(this.currentStations());
+        this.publishAll();
+        this.emitStatus();
+    }
+
     private hasWeatherStation(station: StationData): boolean {
         return this.weatherStationIds.has(station.id);
+    }
+
+    /** The station data of the last query with the newer values of the webhooks. */
+    private currentStations(): StationData[] {
+        return this.live.merge(this.stations);
+    }
+
+    /**
+     * True while webhooks bring the values of every module in use that currently has values:
+     * then the station data is only queried rarely.
+     */
+    private webhookActive(now: number): boolean {
+        if (!this.webhook.enabled || this.live.lastEventAt === undefined)
+            return false;
+        const coverage = this.deps.webhookCoverageMs ?? WEBHOOK_COVERAGE_MS;
+        let used = 0;
+        for (const module of this.currentStations().flatMap(allModules)) {
+            if (!this.usedModules.has(module.id) || !isFresh(module, now))
+                continue;
+            if (!this.live.covered(module.id, now, coverage))
+                return false;
+            used++;
+        }
+        return used > 0;
+    }
+
+    private webhookStatus(now: number): WebhookStatus | undefined {
+        const status = this.webhook.status();
+        return status ? { ...status, lastEventAt: this.live.lastEventAt, active: this.webhookActive(now) } : undefined;
+    }
+
+    private onWebhook(body: unknown): void {
+        if (!this.running)
+            return;
+        // One event per request according to the documentation; a list is taken as well.
+        if (Array.isArray(body)) {
+            body.forEach((entry) => this.onWebhook(entry));
+            return;
+        }
+        const event = parseWebhookEvent(body);
+        if (!event) {
+            this.log.debug("webhook without push_type ignored");
+            return;
+        }
+        switch (event.pushType) {
+            case "device_event":
+                this.onDeviceEvent(event);
+                break;
+            case "topology_changed":
+                this.log.info("Netatmo reports a change of the home (topology_changed), reading the stations again");
+                this.requestPoll();
+                break;
+            case "webhook_activation":
+                this.log.info("Netatmo confirms the webhook (webhook_activation)");
+                break;
+            case "webhook_deletion":
+                this.log.warn("Netatmo reports that the webhook was removed (webhook_deletion), checking the registration");
+                this.webhook.scheduleCheck(WEBHOOK_RECHECK_AFTER_DELETION_MS);
+                this.wake?.();
+                break;
+            default:
+                this.log.debug(`webhook ${event.pushType} ignored`);
+        }
+        this.emitStatus();
+    }
+
+    private onDeviceEvent(event: WebhookEvent): void {
+        if (this.stations.length === 0)
+            return; // before the first query: the modules are not known yet
+        const now = this.now();
+        const first = this.live.lastEventAt === undefined;
+        const result = this.live.apply(event, this.stations, now);
+        if (result.updated.length > 0) {
+            const names = result.updated.map((module) => module.name).join(", ");
+            if (first)
+                this.log.info(`first webhook with values received from Netatmo (${names})`);
+            const values = new Map(event.modules.map((entry) => [entry.id, entry.values]));
+            this.log.debug(`webhook: ${result.updated.map((module) => `${module.name} ${describeValues(values.get(module.id.toLowerCase()) ?? {})}`).join("; ")}`);
+            this.publishAll();
+        }
+        if (result.outdated > 0)
+            this.log.debug(`webhook: values of ${result.outdated} module(s) older than the known ones, ignored`);
+        // Whether a module is reachable is taken from the station data, which is read for it:
+        // Netatmo does not guarantee the order of the webhooks.
+        const lost = result.unreachable.filter((module) => this.managedModule(module.id) && isFresh(this.currentModule(module.id), now));
+        if (lost.length > 0) {
+            this.log.info(`Netatmo reports ${lost.map((module) => `'${module.name}'`).join(", ")} as not reachable, reading the station data`);
+            this.requestPoll();
+        }
+        if (result.unknown.length > 0) {
+            this.log.info(`webhook with values of unknown module(s) ${result.unknown.join(", ")}, reading the stations again`);
+            this.requestPoll();
+        }
+    }
+
+    private managedModule(moduleId: string): boolean {
+        return this.usedModules.has(moduleId);
+    }
+
+    private currentModule(moduleId: string): ModuleData | undefined {
+        return this.currentStations().flatMap(allModules).find((module) => module.id === moduleId);
     }
 
     private brightnessService(station: StationData): BrightnessService | undefined {
@@ -441,8 +716,9 @@ export class Bridge extends EventEmitter {
             return;
         const now = this.now();
         const sources: StationSources[] = [];
+        const stations = this.currentStations();
         for (const { plan, device } of this.managed.values()) {
-            const station = this.stations.find((candidate) => candidate.id === plan.stationId);
+            const station = stations.find((candidate) => candidate.id === plan.stationId);
             if (!station)
                 continue;
             if (plan.type === "WeatherStation") {
@@ -500,8 +776,12 @@ export class Bridge extends EventEmitter {
         if (!this.running)
             return;
         const status = this.status;
-        // Without the brightness values, which change every minute.
-        const key = JSON.stringify([status.state, status.stations, status.devices, status.plannedDevices, status.error?.message, this.lastSourcesText, status.complete]);
+        // Without the brightness values, which change every minute, and the time of the last webhook.
+        const webhook = status.webhook
+            ? [status.webhook.listening, status.webhook.registration, status.webhook.registrationError, status.webhook.active,
+                status.webhook.lastEventAt !== undefined, status.webhook.rejected > 0]
+            : undefined;
+        const key = JSON.stringify([status.state, status.stations, status.devices, status.plannedDevices, status.error?.message, this.lastSourcesText, status.complete, webhook]);
         if (key === this.lastEmitted)
             return;
         this.lastEmitted = key;
@@ -529,6 +809,31 @@ export class Bridge extends EventEmitter {
 
 function minutes(ms: number): string {
     return (ms / 60_000).toFixed(1);
+}
+
+/** Modules whose values the planned free@home devices show. */
+function usedModules(stations: StationData[], plan: PlannedDevice[]): Set<string> {
+    const ids = new Set<string>();
+    for (const device of plan) {
+        if (device.moduleId !== undefined) {
+            ids.add(device.moduleId);
+            continue;
+        }
+        const station = stations.find((candidate) => candidate.id === device.stationId);
+        for (const type of WEATHER_MODULES) {
+            const module = station && firstModule(station, type);
+            if (module)
+                ids.add(module.id);
+        }
+    }
+    return ids;
+}
+
+function describeValues(values: LiveValues): string {
+    return Object.entries(values)
+        .filter(([, value]) => value !== undefined)
+        .map(([name, value]) => `${name} ${value}`)
+        .join(", ") || "(no values)";
 }
 
 /** Values of a module that a free@home sensor shows. */
