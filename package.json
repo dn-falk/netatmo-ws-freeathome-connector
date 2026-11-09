@@ -1,6 +1,6 @@
 {
   "name": "netatmo-ws-freeathome-connector",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "free@home addon: Netatmo Smart Home Weather Station and its indoor modules as free@home weather station and sensors",
   "private": true,
   "main": "build/main.js",
@@ -33,5 +33,8 @@
     "@types/ws": "8.18.1",
     "typescript": "5.9.3",
     "ws": "8.21.3"
+  },
+  "overrides": {
+    "node-libs-browser": "npm:@favware/skip-dependency@1.2.2"
   }
 }
