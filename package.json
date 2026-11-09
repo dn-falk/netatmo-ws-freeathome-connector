@@ -33,5 +33,8 @@
     "@types/ws": "8.18.1",
     "typescript": "5.9.3",
     "ws": "8.21.3"
+  },
+  "overrides": {
+    "node-libs-browser": "npm:@favware/skip-dependency@1.2.2"
   }
 }
